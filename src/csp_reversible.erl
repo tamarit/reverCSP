@@ -63,40 +63,40 @@ run(File, FirstProcess) ->
 					TrackStr = 
 						io_lib:format("~p.\n~p.\n", [NodesDigraph, EdgesDigraph]),
 					file:write_file("track.txt", list_to_binary(TrackStr)),
-					read_from_track(FirstProcess, Digraph),
+					% read_from_track(FirstProcess, Digraph),
 					csp_process:send_message2regprocess(codeserver, stop),
 					ok
 			end
 	end.
 
 
-read_from_track(FirstProcess, Track) ->
-	case lists:member(printer,registered()) of
-	     true -> ok;
-	     false -> 
-	     	register(printer, 
-	        spawn(printer,loop,
-	            [all, false]))
-	end,
-	{{_,_,Trace}, DigraphContent} = 
-		csp_process_interactive:start_from_track(FirstProcess, Track),
-	{NodesDigraph, EdgesDigraph} = 
-		DigraphContent,
-	Digraph = 
-		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-	csp_tracker:print_from_digraph(Digraph, "track_from_track", [], false),
-	io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[Trace]),
-	ReverseOptions = csp_process_interactive:reverse_options(Digraph),
-	io:format("Reverse options: ~p\n", [ReverseOptions]),
-	io:get_line(standard_io, "PRESS INTRO TO CONTINUE..."),
-	case ReverseOptions of 
-		[] ->
-			ok;
-		[H|_] ->
-			csp_process_interactive:remove_from_track(H, Digraph),
-			read_from_track(
-				FirstProcess, 
-				Digraph)
-	end.
+% read_from_track(FirstProcess, Track) ->
+% 	case lists:member(printer,registered()) of
+% 	     true -> ok;
+% 	     false -> 
+% 	     	register(printer, 
+% 	        spawn(printer,loop,
+% 	            [all, false]))
+% 	end,
+% 	{{_,_,Trace}, DigraphContent} = 
+% 		csp_process_interactive:start_from_track(FirstProcess, Track),
+% 	{NodesDigraph, EdgesDigraph} = 
+% 		DigraphContent,
+% 	Digraph = 
+% 		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+% 	csp_tracker:print_from_digraph(Digraph, "track_from_track", [], false),
+% 	io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[Trace]),
+% 	ReverseOptions = csp_process_interactive:reverse_options(Digraph),
+% 	io:format("Reverse options: ~p\n", [ReverseOptions]),
+% 	io:get_line(standard_io, "PRESS INTRO TO CONTINUE..."),
+% 	case ReverseOptions of 
+% 		[] ->
+% 			ok;
+% 		[H|_] ->
+% 			csp_process_interactive:remove_from_track(H, Digraph),
+% 			read_from_track(
+% 				FirstProcess, 
+% 				Digraph)
+% 	end.
 
 

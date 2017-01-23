@@ -11,7 +11,8 @@
 start(FirstProcess) -> 
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
-	execute_csp({FirstExp, -1}, []),
+	ResultExe = 
+		execute_csp({FirstExp, -1}, []),
 	send_message2regprocess(printer,{info_graph,get_self()}),
 	InfoGraph = 
 		receive 
@@ -23,7 +24,123 @@ start(FirstProcess) ->
 				{{{0,0,0,now()},"",""},{[],[]}}
 		end,
 	send_message2regprocess(printer,stop),
-	InfoGraph.
+	case ResultExe of 
+		finish -> 
+			InfoGraph;
+		reverse -> 
+			{{_,_,_}, {NodesDigraph, EdgesDigraph}}
+				= InfoGraph,
+			Digraph = 
+				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+			case lists:member(printer,registered()) of
+			     true -> 
+			     	ok;
+			     false -> 
+			     	register(printer, 
+			        spawn(printer,loop,
+			            [all, false]))
+			end,
+			start_reverse_mode(FirstProcess, start_from_track(FirstProcess, Digraph))
+	end.
+
+start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, ResExp}) ->
+	io:format(
+		"\n\nCurrent expression:\n~s\n\n", 
+		[csp_expression_printer:csp2string(ResExp)]),
+	{NodesDigraph, EdgesDigraph} = 
+		DigraphContent,
+	Digraph = 
+		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+	csp_tracker:print_from_digraph(Digraph, "current", [], false),
+	% csp_tracker:print_from_digraph(Digraph, "track_from_track", [], false),
+	% io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[Trace]),
+	ReverseOptions = 
+		reverse_options(Digraph),
+	% io:format("Reverse options: ~p\n", [ReverseOptions]),
+	% io:get_line(standard_io, "PRESS INTRO TO CONTINUE..."),
+	case ReverseOptions of 
+		[] ->
+			io:format("The track is empty, so there is nothing to reverse."),
+			digraph:delete(Digraph),
+			InfoTrack;
+		[H|_] ->
+			ReverseOptionsReady = 
+				prepare_questions_reverse(FirstProcess, ReverseOptions, Digraph),
+			digraph:delete(Digraph),
+			{_, NEvalInfo} = 
+				ask_questions_reverse(ReverseOptionsReady),
+			start_reverse_mode(FirstProcess, NEvalInfo)
+	end.
+
+prepare_questions_reverse(FirstProcess, [H | T], G) ->
+	NG = copy_digraph(G),
+	{H, {Label, SPAN}} = 
+		digraph:vertex(G, H),
+	NodeStr = node2str(Label, SPAN),
+	csp_process_interactive:remove_from_track(H, NG),
+	case lists:member(printer,registered()) of
+	     true -> 
+	     	ok;
+	     false -> 
+	     	register(printer, 
+	        spawn(printer,loop,
+	            [all, false]))
+	end,
+	Result = {_, ResExp} = 
+		start_from_track(FirstProcess, NG),
+	digraph:delete(NG),
+	[
+		{
+				NodeStr ++ "\n\t\\__ "  
+			++ csp_expression_printer:csp2string(ResExp), 
+			Result
+		} 
+	| prepare_questions_reverse(FirstProcess, T, G)];
+prepare_questions_reverse(_, [], _) ->
+	[].
+
+ask_questions_reverse(List) ->
+	{_, Lines, Ans, AnsDict} = 
+	    lists:foldl(
+	        fun build_question_option/2,
+	        {1, [], [], dict:new()},
+	        	[{Op, Str} || Op = {Str, _} <- List] 
+	        % ++ 	[{t, "See current trace."}]
+	        % ++ 	case Previous of 
+	        % 		[] -> 
+	        % 			[];
+	        % 		_ ->
+	        % 				[{r, "Reverse evaluation."}]
+	       	%  			++ 	[{f, "Finish evaluation."}]
+	        % 			% ++ 	[{u, "Undo last choice."}]
+	        % 	end
+	        ),
+    QuestionLines = 
+        ["These are the available options: " | lists:reverse(Lines)]
+    ++  ["What do you want to do?" 
+         | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
+    Answer = 
+        get_answer(
+        	string:join(QuestionLines,"\n"), 
+        	lists:seq(1, length(Ans))),
+    case dict:fetch(Answer, AnsDict) of 
+  %   	t ->
+		% 	send_message2regprocess(printer,{get_trace, get_self()}),
+		% 	InfoGraph = 
+		% 		receive 
+		% 			{trace, Trace} ->
+		% 				io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
+		% 		end, 
+		% 	ask_questions(List, Previous);
+		% r ->
+		% 	reverse;
+		% f ->
+		% 	finish;
+		% u ->
+		% 	{hd(Previous), tl(Previous)};
+		Other ->
+			Other		
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -37,19 +154,27 @@ execute_csp({Exp, Parent}, Previous) ->
 	io:format("\n\nCurrent expression:\n~s\n\n", [csp_expression_printer:csp2string(Exp)]),
 	case Questions of 
 		[] ->
-			ok;
+			% TODO: Should ask before if the user wants to undo or reverse.
+			io:format("This CSP expression cannot be further evaluated."),
+			finish;
 		_ ->
-			{Answer, NPrevious} = ask_questions(Questions, Previous),
-			NExp = 
-				case Previous of 
-					[Answer | _] ->
-						% In order to enable UNDO we need a way to remove from te trace and from the track.
-						Answer;
-					_ ->
-						process_answer(Exp, Answer, Parent)
-				end,
-			% io:get_line(standard_io, format("****Answer****\n~s\n************\n", [csp_expression_printer:csp2string(Answer)])),
-			execute_csp(NExp, NPrevious)
+			case ask_questions(Questions, Previous) of 
+				{Answer, NPrevious}  ->
+					NExp = 
+						case Previous of 
+							[Answer | _] ->
+								% In order to enable UNDO we need a way to remove from te trace and from the track.
+								Answer;
+							_ ->
+								process_answer(Exp, Answer, Parent)
+						end,
+					% io:get_line(standard_io, format("****Answer****\n~s\n************\n", [csp_expression_printer:csp2string(Answer)])),
+					execute_csp(NExp, NPrevious);
+				finish ->
+					finish;
+				reverse ->
+					reverse 
+			end
 	end.
 
 ask_questions(List, Previous) ->
@@ -58,13 +183,16 @@ ask_questions(List, Previous) ->
 	        fun build_question_option/2,
 	        {1, [], [], dict:new()},
 	        	[{E, csp_expression_printer:csp2string(E)} || E <- List] 
-	        ++ 	[{t, "See current trace."}]),
-	        % ++ 	case Previous of 
-	        % 		[] -> 
-	        % 			[];
-	        % 		_ ->
-	        % 			[{u, "Undo last choice."}]
-	        % 	end),
+	        ++ 	[{t, "See current trace."}]
+	        ++ 	case Previous of 
+	        		[] -> 
+	        			[];
+	        		_ ->
+	        				[{r, "Reverse evaluation."}]
+	       	 			++ 	[{f, "Finish evaluation."}]
+	        			% ++ 	[{u, "Undo last choice."}]
+	        	end
+	        ),
     QuestionLines = 
         ["These are the available options: " | lists:reverse(Lines)]
     ++  ["What do you want to do?" 
@@ -82,6 +210,10 @@ ask_questions(List, Previous) ->
 						io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
 				end, 
 			ask_questions(List, Previous);
+		r ->
+			reverse;
+		f ->
+			finish;
 		% u ->
 		% 	{hd(Previous), tl(Previous)};
 		Other ->
@@ -284,7 +416,8 @@ start_from_track(FirstProcess, Track) ->
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
 	case digraph:vertices(Track) of 
 		[_|_] ->
-			execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
+			NExp = 
+				execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
 			send_message2regprocess(printer,{info_graph,get_self()}),
 			InfoGraph = 
 				receive 
@@ -293,23 +426,20 @@ start_from_track(FirstProcess, Track) ->
 						InfoGraph_
 				after 
 					1000 -> 
-						{{{0,0,0,now()},"",""},{[],[]}}
+						{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
 				end,
 			send_message2regprocess(printer,stop),
-			InfoGraph;
+			{InfoGraph, NExp};
 		[] ->
-			{{0,0,[]}, {[], []}}
+			{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
 	end.
 
 execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
-	io:format(
-		"\n\nCurrent expression:\n~s\n\n", 
-		[csp_expression_printer:csp2string(Exp)]),
-	{NExpParent, NCurrent} = 
+	{NExpParent = {NExp,_}, NCurrent} = 
 		process_answer_from_track(Exp, Parent, Track, Current),
 	case NCurrent of 
 		Top ->
-			ok;
+			NExp;
 		Current ->
 			execute_csp_from_track(NExpParent, Track, Current + 1, Top);
 		_ ->
@@ -516,12 +646,9 @@ is_option(N, Track) ->
 	end.
 
 remove_from_track(N, Track) ->
-	% VA = digraph:vertices(Track),
 	digraph:del_vertices(
 		Track, 
 		digraph_utils:reachable([N], Track)),
-	% VD = digraph:vertices(Track),
-	% io:format("~p\n~p\n",[VA, VD]).
 	ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -557,7 +684,7 @@ get_leaves(G) ->
 % 	hd([V || V <- digraph:vertices(G), digraph:in_degree(G, V) == 0]).
 
 get_max_vertex(G) ->
-	io:format("~p\n", [digraph:vertices(G)]),
+	% io:format("~p\n", [digraph:vertices(G)]),
 	lists:max([V || V <- digraph:vertices(G)]).
 
 extract_span({prefix, SPAN, _, _, _, _}) ->
@@ -583,3 +710,15 @@ same_span(SPAN, Track, Current) ->
 			false
 	end.
 	
+copy_digraph(G) ->
+    digraph_utils:subgraph(G, digraph:vertices(G)).
+
+
+node2str(Label, SPAN) -> 
+	{FL,FC,TL,TC} = printer:extractFromTo(SPAN,Label),
+		Label
+	++ " from (" ++ integer_to_list(FL) 
+	++ "," ++ integer_to_list(FC) 
+	++ ") to (" ++ integer_to_list(TL) 
+	++ "," ++ integer_to_list(TC) 
+	++ ")". 
