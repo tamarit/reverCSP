@@ -161,6 +161,7 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, 
 	end,
 	receive
 		{created, NParent} ->
+			io:format("Parent Sent: ~p\n", [NParent]),
 			process_answer(ProcessPrefixing, P, NParent)
 	end;
 process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
@@ -249,6 +250,7 @@ process_answer({'|||', PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
 % process_answer({procRenaming, ListRenamings, Proc, SPAN}, P) ->
 % 	{procRenaming, ListRenamings, process_answer(Proc, P), SPAN};
 process_answer(P = {skip, SPAN}, _, Parent) ->
+	io:format("Parent: ~p\n", [Parent]),
 	Event = 
 		'   tau (SKIP)',
 	send_message2regprocess(
