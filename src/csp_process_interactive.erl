@@ -1,6 +1,8 @@
 -module(csp_process_interactive).
 
--export([start/1, start_from_track/2]).
+-export([
+	start/1, start_from_track/2, 
+	reverse_options/1, remove_from_track/2]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Main interface
@@ -161,7 +163,6 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, 
 	end,
 	receive
 		{created, NParent} ->
-			io:format("Parent Sent: ~p\n", [NParent]),
 			process_answer(ProcessPrefixing, P, NParent)
 	end;
 process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
@@ -250,7 +251,6 @@ process_answer({'|||', PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
 % process_answer({procRenaming, ListRenamings, Proc, SPAN}, P) ->
 % 	{procRenaming, ListRenamings, process_answer(Proc, P), SPAN};
 process_answer(P = {skip, SPAN}, _, Parent) ->
-	io:format("Parent: ~p\n", [Parent]),
 	Event = 
 		'   tau (SKIP)',
 	send_message2regprocess(
@@ -282,19 +282,24 @@ process_answer(P, _, Parent) ->
 start_from_track(FirstProcess, Track) -> 
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
-	execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
-	send_message2regprocess(printer,{info_graph,get_self()}),
-	InfoGraph = 
-		receive 
-			{info_graph, InfoGraph_} ->
-				% io:format("~p\n", [InfoGraph_]),
-				InfoGraph_
-		after 
-			1000 -> 
-				{{{0,0,0,now()},"",""},{[],[]}}
-		end,
-	send_message2regprocess(printer,stop),
-	InfoGraph.
+	case digraph:vertices(Track) of 
+		[_|_] ->
+			execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
+			send_message2regprocess(printer,{info_graph,get_self()}),
+			InfoGraph = 
+				receive 
+					{info_graph, InfoGraph_} ->
+						% io:format("~p\n", [InfoGraph_]),
+						InfoGraph_
+				after 
+					1000 -> 
+						{{{0,0,0,now()},"",""},{[],[]}}
+				end,
+			send_message2regprocess(printer,stop),
+			InfoGraph;
+		[] ->
+			{{0,0,[]}, {[], []}}
+	end.
 
 execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
 	io:format(
@@ -326,7 +331,7 @@ process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing,
 			end,
 			receive
 				{created, NParent} ->
-					process_answer_from_track(ProcessPrefixing, NParent, Track, Current + 1)
+					process_answer_from_track(ProcessPrefixing, NParent, Track, Current + 2)
 			end;
 		false ->
 			{{P, Parent}, Current}
@@ -336,7 +341,7 @@ process_answer_from_track(P = {'|~|', PA, PB, SPAN}, Parent, Track, Current) ->
 		true ->
 			case digraph:out_neighbours(Track, Current) of 
 				[] -> 
-					{P, Current + 1};
+					{{P, Parent}, Current + 1};
 				[V_CHILD] -> 
 					{_,{_,SPAN_CHILD}} = 
 						digraph:vertex(Track, V_CHILD),
@@ -426,7 +431,7 @@ process_answer_from_track(IL = {'|||', PA, PB, SPAN}, Parent, Track, Current) ->
 		false -> 
 			{{IL, Parent}, Current}
 	end;
-process_answer_from_track({'|||', PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Current) ->
+process_answer_from_track(P = {'|||', PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Current) ->
 	{{NPA, NParentA}, CurrentA}  = 
 		process_answer_from_track(PA, ParentA, Track, Current), 
 	{{NPB, NParentB}, CurrentB} = 
@@ -435,8 +440,8 @@ process_answer_from_track({'|||', PA, PB, ParentA, ParentB, SPAN}, Parent, Track
 		{{'|||', 
 			NPA, 
 			NPB, 
-			ParentA,
-			ParentB,
+			NParentA,
+			NParentB,
 			SPAN}, 
 		 Parent},
 		max(CurrentA, CurrentB)
@@ -467,6 +472,58 @@ process_answer_from_track(P = {finished_skip, SPAN, NodeSkip}, Parent, Track, Cu
 	{{P, Parent}, Current}.
 
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   Extract reverse options
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+reverse_options(Track) ->
+	reverse_options_list(get_leaves(Track), Track, []).
+
+
+reverse_options_list([H | T], Track, Acc) ->
+	{NT, NAcc} =
+		case is_option(H, Track) of 
+			true ->
+				{T, [H|Acc]};
+			false ->
+				{digraph:in_neighbours(Track,H) ++  T, Acc}
+		end,
+	reverse_options_list(NT, Track, NAcc);
+reverse_options_list([], _, Acc) ->
+	lists:reverse(Acc).
+
+is_option(N, Track) ->
+	try 
+		{N, {Label, _}} = 
+			digraph:vertex(Track, N), 
+		NAcc = 
+			case Label of 
+				"SKIP" ->
+					false;
+				"STOP" ->
+					false;
+				_ ->
+					lists:member(hd(Label), lists:seq($a,$z)) 
+					or
+					lists:member(hd(Label), lists:seq($A,$Z))
+			end
+	catch 
+		_:_ ->
+			false
+	end.
+
+remove_from_track(N, Track) ->
+	% VA = digraph:vertices(Track),
+	digraph:del_vertices(
+		Track, 
+		digraph_utils:reachable([N], Track)),
+	% VD = digraph:vertices(Track),
+	% io:format("~p\n~p\n",[VA, VD]).
+	ok.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %   Other functions
@@ -493,10 +550,14 @@ send_message2regprocess(Process,Message) ->
 get_self() ->
 	catch self().
 
+get_leaves(G) ->
+	[V || V <- digraph:vertices(G), digraph:out_degree(G, V) == 0].
+
 % search_root(G) ->
-% 	hd([V || V <- digraph:vertices(G), in_degree(G, V) == 0]).
+% 	hd([V || V <- digraph:vertices(G), digraph:in_degree(G, V) == 0]).
 
 get_max_vertex(G) ->
+	io:format("~p\n", [digraph:vertices(G)]),
 	lists:max([V || V <- digraph:vertices(G)]).
 
 extract_span({prefix, SPAN, _, _, _, _}) ->
