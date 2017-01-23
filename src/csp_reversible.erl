@@ -62,12 +62,12 @@ run(File, FirstProcess) ->
 					     false -> 
 					     	register(printer, 
 					         spawn(printer,loop,
-					            [all, true]))
+					            [all, false]))
 					end,					
 					%io:format("Timout: ~p\n",[Timeout]),
 					% TimeBeforeExecuting = now(),
 					{{{N,E,S,TimeAfterExecuting},_G,Trace}, DigraphContent} = 
-						csp_process_interactive:start(FirstProcess, self()),
+						csp_process_interactive:start(FirstProcess),
 					{NodesDigraph, EdgesDigraph} = DigraphContent,
 					% TimeBeforeTrack = now(),
 					Digraph = csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
@@ -79,7 +79,7 @@ run(File, FirstProcess) ->
 					% 		ok;
 					% 	_ -> 
 					% 		% printer:add_to_file(G,NoOutput),
-					% 		print_from_digraph(Digraph, "track", [], NoOutput),
+							csp_tracker:print_from_digraph(Digraph, "track", [], false),
 					% 		case NoOutput of 
 					% 			false ->
 									io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace]),
@@ -95,6 +95,26 @@ run(File, FirstProcess) ->
 					TrackStr = 
 						io_lib:format("~p.\n~p.\n", [NodesDigraph, EdgesDigraph]),
 					file:write_file("track.txt", list_to_binary(TrackStr)),
+
+
+
+					case lists:member(printer,registered()) of
+					     true -> ok;
+					     false -> 
+					     	register(printer, 
+					         spawn(printer,loop,
+					            [all, false]))
+					end,
+					{{_,_,TraceTRACK}, DigraphContentTRACK} = 
+						csp_process_interactive:start_from_track(FirstProcess, Digraph),
+					{NodesDigraphTRACK, EdgesDigraphTRACK} = 
+						DigraphContentTRACK,
+					DigraphTRACK = 
+						csp_tracker:build_digraph(NodesDigraphTRACK, EdgesDigraphTRACK),
+					csp_tracker:print_from_digraph(DigraphTRACK, "track_from_track", [], false),
+					io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[TraceTRACK]),
+
+
 					% [_,{memory,Words},_] = digraph:info(Digraph),
 					% Result1 = 
 					% 	case NoOutput of 
@@ -114,7 +134,8 @@ run(File, FirstProcess) ->
 					% 		true ->
 					% 			{{N,E,S},TimeConversion,TimeExecuting,TimeConversion + TimeExecuting,SizeFile}
 					% 	end,
-					DigraphComplete = csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+					% DigraphComplete = 
+					% 	csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
 					% TotalSlice = csp_slicer:get_total_slices(DigraphComplete),
 					% Result2 = 
 					% 	case NoOutput of 
