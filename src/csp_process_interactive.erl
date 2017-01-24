@@ -8,6 +8,9 @@
 % Main interface
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% TODO
+% - Print track
+% - Undo
 
 start(FirstProcess) -> 
 	FirstExp = 
@@ -57,9 +60,21 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 	% io:get_line(standard_io, "PRESS INTRO TO CONTINUE..."),
 	case ReverseOptions of 
 		[] ->
-			io:format("The track is empty, so there is nothing to reverse."),
-			digraph:delete(Digraph),
-			InfoTrack;
+			io:format("The track is empty, so there is nothing to reverse.\n"),
+			case 
+				ask_questions(
+					[{e, "Forward evaluation."}, {f, "Finish."}], 
+					fun process_answer_reverse/3, 
+					[])
+			of 
+				finish -> 
+					io:format("Entra 1\n"),
+					digraph:delete(Digraph),
+					InfoTrack;
+				forward -> 
+					register_printer(),
+					start_from_track_continue_user(FirstProcess, Digraph)
+			end;
 		[H|_] ->
 			ReverseOptionsReady = 
 				prepare_questions_reverse(FirstProcess, ReverseOptions, Digraph),
@@ -104,44 +119,6 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 prepare_questions_reverse(_, [], _) ->
 	[].
 
-% ask_questions_reverse(List, Trace) ->
-% 	{_, Lines, Ans, AnsDict} = 
-% 	    lists:foldl(
-% 	        fun build_question_option/2,
-% 	        {1, [], [], dict:new()},
-% 	        	[{Op, Str} || Op = {Str, _} <- List] 
-% 	        ++ 	[{t, "See current trace."}]
-% 	        ++ 	[{e, "Forward evaluation."}]
-% 	        ++ 	[{f, "Finish."}]
-% 	        % ++ 	case Previous of 
-% 	        % 		[] -> 
-% 	        % 			[];
-% 	        % 		_ ->
-% 	        % 				[{r, "Reverse evaluation."}]
-% 	       	%  			++ 	[{f, "Finish evaluation."}]
-% 	        % 			% ++ 	[{u, "Undo last choice."}]
-% 	        % 	end
-% 	        ),
-%     QuestionLines = 
-%         ["These are the available options: " | lists:reverse(Lines)]
-%     ++  ["What do you want to do?" 
-%          | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
-%     Answer = 
-%         get_answer(
-%         	string:join(QuestionLines,"\n"), 
-%         	lists:seq(1, length(Ans))),
-%     case dict:fetch(Answer, AnsDict) of
-%     	t -> 
-%     		io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace]),
-%     		ask_questions_reverse(List, Trace);
-%     	e -> 
-%     		forward;
-%     	f -> 
-%     		finish;
-% 		Other ->
-% 			Other		
-%     end.
-
 process_answer_reverse(t, RC, Data) ->
 	io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Data]), 
 	RC();
@@ -165,8 +142,11 @@ execute_csp({Exp, Parent}, Previous) ->
 	case Questions of 
 		[] ->
 			% TODO: Should ask before if the user wants to undo or reverse.
-			io:format("This CSP expression cannot be further evaluated."),
-			finish;
+			io:format("This CSP expression cannot be further evaluated.\n"),
+			ask_questions(
+				[{r, "Reverse evaluation."}, {f, "Finish evaluation."}],
+				fun process_answer_exe/3,
+				[]);
 		_ ->
 			AdditionalOptions = 
 				[
@@ -207,50 +187,6 @@ process_answer_exe(Other, _, _) ->
 
 build_str_tuples(List) ->
 	[{E, csp_expression_printer:csp2string(E)} || E <- List].
-
-% ask_questions(List, Previous) ->
-% 	 {_, Lines, Ans, AnsDict} = 
-% 	    lists:foldl(
-% 	        fun build_question_option/2,
-% 	        {1, [], [], dict:new()},
-% 	        	[{E, csp_expression_printer:csp2string(E)} || E <- List] 
-% 	        ++ 	[{t, "See current trace."}]
-% 	        ++ 	case Previous of 
-% 	        		[] -> 
-% 	        			[];
-% 	        		_ ->
-% 	        				[{r, "Reverse evaluation."}]
-% 	       	 			++ 	[{f, "Finish evaluation."}]
-% 	        			% ++ 	[{u, "Undo last choice."}]
-% 	        	end
-% 	        ),
-%     QuestionLines = 
-%         ["These are the available options: " | lists:reverse(Lines)]
-%     ++  ["What do you want to do?" 
-%          | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
-%     Answer = 
-%         get_answer(
-%         	string:join(QuestionLines,"\n"), 
-%         	lists:seq(1, length(Ans))),
-%     case dict:fetch(Answer, AnsDict) of 
-%     	t ->
-% 			send_message2regprocess(printer,{get_trace, get_self()}),
-% 			InfoGraph = 
-% 				receive 
-% 					{trace, Trace} ->
-% 						io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
-% 				end, 
-% 			ask_questions(List, Previous);
-% 		r ->
-% 			reverse;
-% 		f ->
-% 			finish;
-% 		% u ->
-% 		% 	{hd(Previous), tl(Previous)};
-% 		Other ->
-% 			{Other, [Other | Previous]}		
-%     end.
-
 
 ask_questions(List, ProcessAnswer, Data) ->
 	 {_, Lines, Ans, AnsDict} = 
@@ -471,7 +407,7 @@ start_from_track_continue_user(FirstProcess, Track) ->
 				execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
 			start_from_expr(FirstProcess, NExp);
 		[] ->
-			{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
+			start_from_expr(FirstProcess, FirstExp)
 	end.
 
 start_from_track(FirstProcess, Track) -> 
