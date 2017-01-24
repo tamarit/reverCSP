@@ -11,6 +11,7 @@
 % TODO
 % - Print track
 % - Undo
+% - Padding for options when there is more than 10 options
 
 start(FirstProcess) -> 
 	FirstExp = 
@@ -51,7 +52,10 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 		DigraphContent,
 	Digraph = 
 		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-	csp_tracker:print_from_digraph(Digraph, "current", [], false),
+	PrintCurrentTrack = 
+		fun () -> 
+			csp_tracker:print_from_digraph(Digraph, "current", [], false)
+		end,
 	% csp_tracker:print_from_digraph(Digraph, "track_from_track", [], false),
 	% io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[Trace]),
 	ReverseOptions = 
@@ -81,13 +85,14 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 			AdditionalOptions = 
 				[
 					{t, "See current trace."},
+					{c, "Print current track."},
 					{e, "Forward evaluation."},
 					{f, "Finish."}
 				],
 			case ask_questions(
 					ReverseOptionsReady ++ AdditionalOptions, 
 					fun process_answer_reverse/3, 
-					Trace) 
+					{Trace, PrintCurrentTrack}) 
 			of 
 				finish -> 
 					digraph:delete(Digraph),
@@ -119,8 +124,12 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 prepare_questions_reverse(_, [], _) ->
 	[].
 
-process_answer_reverse(t, RC, Data) ->
-	io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Data]), 
+process_answer_reverse(t, RC, {Trace,_}) ->
+	io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace]), 
+	RC();
+process_answer_reverse(c, RC, {_,PT}) ->
+	PT(),
+	io:format("Current track available at current.pdf\n"),
 	RC();
 process_answer_reverse(e, _, _) ->
 	forward;
