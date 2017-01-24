@@ -8,9 +8,13 @@
 % Main interface
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
 start(FirstProcess) -> 
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
+	start_from_expr(FirstProcess, FirstExp).
+
+start_from_expr(FirstProcess, FirstExp) -> 
 	ResultExe = 
 		execute_csp({FirstExp, -1}, []),
 	send_message2regprocess(printer,{info_graph,get_self()}),
@@ -32,14 +36,7 @@ start(FirstProcess) ->
 				= InfoGraph,
 			Digraph = 
 				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-			case lists:member(printer,registered()) of
-			     true -> 
-			     	ok;
-			     false -> 
-			     	register(printer, 
-			        spawn(printer,loop,
-			            [all, false]))
-			end,
+			register_printer(),
 			start_reverse_mode(FirstProcess, start_from_track(FirstProcess, Digraph))
 	end.
 
@@ -66,10 +63,27 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 		[H|_] ->
 			ReverseOptionsReady = 
 				prepare_questions_reverse(FirstProcess, ReverseOptions, Digraph),
-			digraph:delete(Digraph),
-			{_, NEvalInfo} = 
-				ask_questions_reverse(ReverseOptionsReady),
-			start_reverse_mode(FirstProcess, NEvalInfo)
+			AdditionalOptions = 
+				[
+					{t, "See current trace."},
+					{e, "Forward evaluation."},
+					{f, "Finish."}
+				],
+			case ask_questions(
+					ReverseOptionsReady ++ AdditionalOptions, 
+					fun process_answer_reverse/3, 
+					Trace) 
+			of 
+				finish -> 
+					digraph:delete(Digraph),
+					InfoTrack;
+				forward -> 
+					register_printer(),
+					start_from_track_continue_user(FirstProcess, Digraph);
+				NEvalInfo -> 
+					digraph:delete(Digraph),
+					start_reverse_mode(FirstProcess, NEvalInfo)
+			end
 	end.
 
 prepare_questions_reverse(FirstProcess, [H | T], G) ->
@@ -78,69 +92,65 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 		digraph:vertex(G, H),
 	NodeStr = node2str(Label, SPAN),
 	csp_process_interactive:remove_from_track(H, NG),
-	case lists:member(printer,registered()) of
-	     true -> 
-	     	ok;
-	     false -> 
-	     	register(printer, 
-	        spawn(printer,loop,
-	            [all, false]))
-	end,
+	register_printer(),
 	Result = {_, ResExp} = 
 		start_from_track(FirstProcess, NG),
 	digraph:delete(NG),
-	[
-		{
-				NodeStr ++ "\n\t\\__ "  
-			++ csp_expression_printer:csp2string(ResExp), 
-			Result
-		} 
-	| prepare_questions_reverse(FirstProcess, T, G)];
+	Printed = 
+			NodeStr ++ "\n\t\\__ "  
+		++ 	csp_expression_printer:csp2string(ResExp),
+	[ 	{Result, Printed} 
+	| 	prepare_questions_reverse(FirstProcess, T, G)];
 prepare_questions_reverse(_, [], _) ->
 	[].
 
-ask_questions_reverse(List) ->
-	{_, Lines, Ans, AnsDict} = 
-	    lists:foldl(
-	        fun build_question_option/2,
-	        {1, [], [], dict:new()},
-	        	[{Op, Str} || Op = {Str, _} <- List] 
-	        % ++ 	[{t, "See current trace."}]
-	        % ++ 	case Previous of 
-	        % 		[] -> 
-	        % 			[];
-	        % 		_ ->
-	        % 				[{r, "Reverse evaluation."}]
-	       	%  			++ 	[{f, "Finish evaluation."}]
-	        % 			% ++ 	[{u, "Undo last choice."}]
-	        % 	end
-	        ),
-    QuestionLines = 
-        ["These are the available options: " | lists:reverse(Lines)]
-    ++  ["What do you want to do?" 
-         | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
-    Answer = 
-        get_answer(
-        	string:join(QuestionLines,"\n"), 
-        	lists:seq(1, length(Ans))),
-    case dict:fetch(Answer, AnsDict) of 
-  %   	t ->
-		% 	send_message2regprocess(printer,{get_trace, get_self()}),
-		% 	InfoGraph = 
-		% 		receive 
-		% 			{trace, Trace} ->
-		% 				io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
-		% 		end, 
-		% 	ask_questions(List, Previous);
-		% r ->
-		% 	reverse;
-		% f ->
-		% 	finish;
-		% u ->
-		% 	{hd(Previous), tl(Previous)};
-		Other ->
-			Other		
-    end.
+% ask_questions_reverse(List, Trace) ->
+% 	{_, Lines, Ans, AnsDict} = 
+% 	    lists:foldl(
+% 	        fun build_question_option/2,
+% 	        {1, [], [], dict:new()},
+% 	        	[{Op, Str} || Op = {Str, _} <- List] 
+% 	        ++ 	[{t, "See current trace."}]
+% 	        ++ 	[{e, "Forward evaluation."}]
+% 	        ++ 	[{f, "Finish."}]
+% 	        % ++ 	case Previous of 
+% 	        % 		[] -> 
+% 	        % 			[];
+% 	        % 		_ ->
+% 	        % 				[{r, "Reverse evaluation."}]
+% 	       	%  			++ 	[{f, "Finish evaluation."}]
+% 	        % 			% ++ 	[{u, "Undo last choice."}]
+% 	        % 	end
+% 	        ),
+%     QuestionLines = 
+%         ["These are the available options: " | lists:reverse(Lines)]
+%     ++  ["What do you want to do?" 
+%          | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
+%     Answer = 
+%         get_answer(
+%         	string:join(QuestionLines,"\n"), 
+%         	lists:seq(1, length(Ans))),
+%     case dict:fetch(Answer, AnsDict) of
+%     	t -> 
+%     		io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace]),
+%     		ask_questions_reverse(List, Trace);
+%     	e -> 
+%     		forward;
+%     	f -> 
+%     		finish;
+% 		Other ->
+% 			Other		
+%     end.
+
+process_answer_reverse(t, RC, Data) ->
+	io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Data]), 
+	RC();
+process_answer_reverse(e, _, _) ->
+	forward;
+process_answer_reverse(f, _, _) ->
+	finish;
+process_answer_reverse(Other, _, _) ->
+	Other.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -158,41 +168,96 @@ execute_csp({Exp, Parent}, Previous) ->
 			io:format("This CSP expression cannot be further evaluated."),
 			finish;
 		_ ->
-			case ask_questions(Questions, Previous) of 
-				{Answer, NPrevious}  ->
-					NExp = 
-						case Previous of 
-							[Answer | _] ->
-								% In order to enable UNDO we need a way to remove from te trace and from the track.
-								Answer;
-							_ ->
-								process_answer(Exp, Answer, Parent)
-						end,
-					% io:get_line(standard_io, format("****Answer****\n~s\n************\n", [csp_expression_printer:csp2string(Answer)])),
-					execute_csp(NExp, NPrevious);
+			AdditionalOptions = 
+				[
+					{t, "See current trace."},
+					{r, "Reverse evaluation."},
+					{f, "Finish evaluation."}
+				],
+			case ask_questions(
+					build_str_tuples(Questions) ++ AdditionalOptions, 
+					fun process_answer_exe/3,
+					[]) 
+			of 
 				finish ->
 					finish;
 				reverse ->
-					reverse 
+					reverse;
+				Answer  ->
+					NExp = 
+						process_answer(Exp, Answer, Parent),
+					execute_csp(NExp, [])
 			end
 	end.
 
-ask_questions(List, Previous) ->
+process_answer_exe(t, RC, _) ->
+	send_message2regprocess(printer,{get_trace, get_self()}),
+	InfoGraph = 
+		receive 
+			{trace, Trace} ->
+				io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
+		end, 
+	RC();
+process_answer_exe(r, _, _) ->
+	reverse;
+process_answer_exe(f, _, _) ->
+	finish;
+process_answer_exe(Other, _, _) ->
+	Other.
+
+build_str_tuples(List) ->
+	[{E, csp_expression_printer:csp2string(E)} || E <- List].
+
+% ask_questions(List, Previous) ->
+% 	 {_, Lines, Ans, AnsDict} = 
+% 	    lists:foldl(
+% 	        fun build_question_option/2,
+% 	        {1, [], [], dict:new()},
+% 	        	[{E, csp_expression_printer:csp2string(E)} || E <- List] 
+% 	        ++ 	[{t, "See current trace."}]
+% 	        ++ 	case Previous of 
+% 	        		[] -> 
+% 	        			[];
+% 	        		_ ->
+% 	        				[{r, "Reverse evaluation."}]
+% 	       	 			++ 	[{f, "Finish evaluation."}]
+% 	        			% ++ 	[{u, "Undo last choice."}]
+% 	        	end
+% 	        ),
+%     QuestionLines = 
+%         ["These are the available options: " | lists:reverse(Lines)]
+%     ++  ["What do you want to do?" 
+%          | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
+%     Answer = 
+%         get_answer(
+%         	string:join(QuestionLines,"\n"), 
+%         	lists:seq(1, length(Ans))),
+%     case dict:fetch(Answer, AnsDict) of 
+%     	t ->
+% 			send_message2regprocess(printer,{get_trace, get_self()}),
+% 			InfoGraph = 
+% 				receive 
+% 					{trace, Trace} ->
+% 						io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
+% 				end, 
+% 			ask_questions(List, Previous);
+% 		r ->
+% 			reverse;
+% 		f ->
+% 			finish;
+% 		% u ->
+% 		% 	{hd(Previous), tl(Previous)};
+% 		Other ->
+% 			{Other, [Other | Previous]}		
+%     end.
+
+
+ask_questions(List, ProcessAnswer, Data) ->
 	 {_, Lines, Ans, AnsDict} = 
 	    lists:foldl(
 	        fun build_question_option/2,
-	        {1, [], [], dict:new()},
-	        	[{E, csp_expression_printer:csp2string(E)} || E <- List] 
-	        ++ 	[{t, "See current trace."}]
-	        ++ 	case Previous of 
-	        		[] -> 
-	        			[];
-	        		_ ->
-	        				[{r, "Reverse evaluation."}]
-	       	 			++ 	[{f, "Finish evaluation."}]
-	        			% ++ 	[{u, "Undo last choice."}]
-	        	end
-	        ),
+	        {1, [], [], dict:new()}, 
+	        List),
     QuestionLines = 
         ["These are the available options: " | lists:reverse(Lines)]
     ++  ["What do you want to do?" 
@@ -201,27 +266,10 @@ ask_questions(List, Previous) ->
         get_answer(
         	string:join(QuestionLines,"\n"), 
         	lists:seq(1, length(Ans))),
-    case dict:fetch(Answer, AnsDict) of 
-    	t ->
-			send_message2regprocess(printer,{get_trace, get_self()}),
-			InfoGraph = 
-				receive 
-					{trace, Trace} ->
-						io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
-				end, 
-			ask_questions(List, Previous);
-		r ->
-			reverse;
-		f ->
-			finish;
-		% u ->
-		% 	{hd(Previous), tl(Previous)};
-		Other ->
-			{Other, [Other | Previous]}		
-    end.
-	% rand:seed(exs64),
-	% Selected = rand:uniform(length(List)),
-	% lists:nth(Selected, List).
+    ProcessAnswer(
+    	dict:fetch(Answer, AnsDict), 
+    	fun() -> ask_questions(List, ProcessAnswer, Data) end, 
+    	Data).
 
 build_question_option({O, Name}, {N, Lines, Answers, Dict}) ->
     NLines = 
@@ -298,8 +346,11 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, 
 			process_answer(ProcessPrefixing, P, NParent)
 	end;
 process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
-	{Selected, _} = 
-		ask_questions([PA, PB], []),
+	Selected = 
+		ask_questions(
+			build_str_tuples([PA, PB]), 
+			fun process_answer_exe/3, 
+			[]),
 	Event = 
 		list_to_atom("   tau -> Internal Choice. Branch: "
 			++ csp_expression_printer:csp2string(Selected)),
@@ -410,6 +461,18 @@ process_answer(P, _, Parent) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+start_from_track_continue_user(FirstProcess, Track) -> 
+	FirstExp = 
+		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
+	case digraph:vertices(Track) of 
+		[_|_] ->
+			NExp = 
+				execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
+			start_from_expr(FirstProcess, NExp);
+		[] ->
+			{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
+	end.
 
 start_from_track(FirstProcess, Track) -> 
 	FirstExp = 
@@ -722,3 +785,13 @@ node2str(Label, SPAN) ->
 	++ ") to (" ++ integer_to_list(TL) 
 	++ "," ++ integer_to_list(TC) 
 	++ ")". 
+
+register_printer() ->
+	case lists:member(printer,registered()) of
+	     true -> 
+	     	ok;
+	     false -> 
+	     	register(printer, 
+	        spawn(printer,loop,
+	            [all, false]))
+	end.
