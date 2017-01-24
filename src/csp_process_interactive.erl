@@ -160,6 +160,7 @@ execute_csp({Exp, Parent}, Previous) ->
 			AdditionalOptions = 
 				[
 					{t, "See current trace."},
+					{c, "Print current track."},
 					{r, "Reverse evaluation."},
 					{f, "Finish evaluation."}
 				],
@@ -185,6 +186,17 @@ process_answer_exe(t, RC, _) ->
 		receive 
 			{trace, Trace} ->
 				io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace])
+		end, 
+	RC();
+process_answer_exe(c, RC, _) ->
+	send_message2regprocess(printer,{info_graph_no_stop, get_self()}),
+	InfoGraph = 
+		receive 
+			{info_graph, {{_,_,_}, {NodesDigraph, EdgesDigraph}}} ->
+				Digraph = 
+					csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+				csp_tracker:print_from_digraph(Digraph, "current", [], false),
+				io:format("Current track available at current.pdf\n")
 		end, 
 	RC();
 process_answer_exe(r, _, _) ->
