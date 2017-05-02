@@ -13,10 +13,21 @@ csp2string({'|||', PA, PB, SPAN}) ->
 	brackets(csp2string(PA) ++ " ||| " ++ csp2string(PB));
 csp2string({'|||', PA, PB, _, _, SPAN}) ->
 	brackets(csp2string(PA) ++ " ||| " ++ csp2string(PB));
+csp2string({sharing, {closure, Events}, PA, PB, _}) ->
+	brackets(csp2string(PA) ++ " [|{|" ++ events_to_str(Events) ++ "|}|] " ++ csp2string(PB));
+csp2string({sharing, {closure, Events}, PA, PB, _, _, _}) ->
+	brackets(csp2string(PA) ++ " [|{|" ++ events_to_str(Events) ++ "|}|] " ++ csp2string(PB));
 csp2string({skip, SPAN}) ->
 	"SKIP";
 csp2string({finished_skip, _, _}) ->
-	"T".
+	"T";
+csp2string(L = [_|_]) ->
+	string:join([csp2string(E) || E <- L], ", ");
+csp2string(Other) ->
+	io:format("Other: ~p\n", [Other]).
 
 brackets(S) ->
 	"(" ++ S ++ ")".
+
+events_to_str(L) ->
+	string:join([atom_to_list(E) || E <- L], ",").

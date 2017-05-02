@@ -19,6 +19,12 @@ clean:
 run:
 	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex.csp -noshell -s erlang halt
 
+run2:
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex2.csp -noshell -s erlang halt
+
+run_paper:
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex_paper.csp -noshell -s erlang halt
+
 update_sm:
 	@cd csp_tracker; git checkout master && git pull
 	@git add csp_tracker

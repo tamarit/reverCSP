@@ -9,7 +9,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % TODO
-% - Print track
 % - Undo
 % - Padding for options when there is more than 10 options
 
@@ -179,6 +178,8 @@ execute_csp({Exp, Parent}, Previous) ->
 					execute_csp(NExp, [])
 			end
 	end.
+% execute_csp(Par1, Par2) ->
+% 	io:format("Par1: ~p\nPar2: ~p\n", [Par1, Par2]).
 
 process_answer_exe(t, RC, _) ->
 	send_message2regprocess(printer,{get_trace, get_self()}),
@@ -271,7 +272,59 @@ get_questions({'|||', PA, PB, SPAN}, Renamings) ->
 	get_questions(PA, Renamings) ++ get_questions(PB, Renamings);
 get_questions({'|||', PA, PB, _, _, SPAN}, Renamings) ->
 	get_questions(PA, Renamings) ++ get_questions(PB, Renamings);
-% get_questions({sharing, {closure, Events}, PA, PB, SPAN}, Renamings) ->
+get_questions({sharing, {closure, Events}, PA, PB, SPAN}, Renamings) ->
+	Res = get_questions(PA, Renamings) ++ get_questions(PB, Renamings),
+	io:format("Res: ~p\n", [Res]),
+	Res;
+get_questions({sharing, {closure, Events}, PA, PB, _, _, SPAN}, Renamings) ->
+	OptA = 
+		get_questions(PA, Renamings),
+	OptB = 
+		get_questions(PB, Renamings),
+	FunIsPref = 
+		fun
+			(Pref = {prefix, _, _, Event, _, _}, {NotPref, IsPref}) ->
+				{NotPref, [{Event, Pref} | IsPref]};
+			(Prefs = [{prefix, _, _, Event, _, _}|_], {NotPref, IsPref}) ->
+				{NotPref, [{Event, Prefs} | IsPref]};
+			(Other, {NotPref, IsPref}) -> 
+				{[Other | NotPref], IsPref}
+		end,
+	{NotPrefA, IsPrefA} = 
+		lists:foldl(FunIsPref, {[], []}, OptA),
+	{NotPrefB, IsPrefB} = 
+		lists:foldl(FunIsPref, {[], []}, OptB),
+	NotPref = 
+		NotPrefA ++ NotPrefB, 
+	PrefNotSync = 
+		[{Event, Pref} 
+		 || {Event, Pref} <- (IsPrefA ++ IsPrefB), 
+		 	not(lists:member(Event, Events))],
+	PrefSyncA = 
+		IsPrefA -- PrefNotSync,
+	PrefSyncB = 
+		IsPrefB -- PrefNotSync,
+	PrefSync = 
+		lists:foldl(
+			fun({EventA, PrefA}, Acc) ->  
+					Acc ++
+						[case {PrefA, PrefB} of 
+							{[_|_], [_|_]} -> 
+								PrefA ++ PrefB;
+							{[_|_], _} -> 
+								[PrefB | PrefA];
+							{_, [_|_]} -> 
+								[PrefA | PrefB];
+							_ -> 
+								[PrefA, PrefB]
+						 end
+						 || {EventB, PrefB} <- PrefSyncB, EventA == EventB]  
+			end,
+			[],
+			PrefSyncA),
+	Opts = NotPref ++ [Pref || {_, Pref} <- PrefNotSync] ++ PrefSync,
+	io:format("Opts: ~p\n", [Opts]),
+	Opts;
 % 	% Descartar els no factibles (per sincronitzacio)
 % 	% Juntar opcions quan syncronitzacio (contemplant totes les combinacions)
 % 	% la resta fer append
@@ -287,6 +340,26 @@ get_questions({skip, SPAN}, Renamings) ->
 get_questions({finished_skip, _, _}, Renamings) ->
 	[].
 
+process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L = [_|_], Parent) ->
+	case lists:member(P, L) of 
+		true -> 
+			send_message2regprocess(
+				printer,
+				{print, Event, get_self()}),
+			send_message2regprocess(
+				printer,
+				{create_graph, P, Parent, get_self()}),
+			receive
+				{printed, Event} -> 
+					ok
+			end,
+			receive
+				{created, NParent} ->
+					process_answer(ProcessPrefixing, P, NParent)
+			end;
+		false -> 
+			{P, Parent}
+	end;
 process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, Parent) ->
 	send_message2regprocess(
 		printer,
@@ -382,12 +455,40 @@ process_answer({'|||', PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
 		NParentB,
 		SPAN}, 
 	 Parent};
-% process_answer({sharing, {closure, Events}, PA, PB, SPAN}, P) ->
-% 	{sharing, 
-% 		{closure, Events}, 
-% 		process_answer(PA, P), 
-% 		process_answer(PB, P), 
-% 		SPAN};
+process_answer(IL = {sharing, {closure, Events}, PA, PB, SPAN}, P, Parent) ->
+	send_message2regprocess(
+		printer,
+		{create_graph, IL, Parent, get_self()}),
+	NParent = 
+		receive
+			{created, NParent0} ->
+				NParent0
+		end,
+	{NPA, ParentA} = 
+		process_answer(PA, P, NParent),
+	{NPB, ParentB} = 
+		process_answer(PB, P, NParent),
+	{{sharing, 
+		{closure, Events}, 
+		NPA, 
+		NPB,
+		ParentA,
+		ParentB,
+		SPAN},
+	NParent};
+process_answer({sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
+	{NPA, NParentA} = 
+		process_answer(PA, P, ParentA),
+	{NPB, NParentB} = 
+		process_answer(PB, P, ParentB),
+	{{sharing, 
+		{closure, Events}, 
+		NPA, 
+		NPB,
+		NParentA,
+		NParentB,
+		SPAN},
+	Parent};
 % process_answer({procRenaming, ListRenamings, Proc, SPAN}, P) ->
 % 	{procRenaming, ListRenamings, process_answer(Proc, P), SPAN};
 process_answer(P = {skip, SPAN}, _, Parent) ->
@@ -407,7 +508,7 @@ process_answer(P = {skip, SPAN}, _, Parent) ->
 		{created, NParent} ->
 			{{finished_skip, SPAN, NParent}, NParent}
 	end;
-process_answer(P, _, Parent) ->
+process_answer(P, Ans, Parent) ->
 	{P, Parent}.
 
 
@@ -417,7 +518,6 @@ process_answer(P, _, Parent) ->
 %   Process Execution (based on a track)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 
 start_from_track_continue_user(FirstProcess, Track) -> 
 	FirstExp = 
