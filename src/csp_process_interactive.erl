@@ -71,7 +71,6 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 					[])
 			of 
 				finish -> 
-					io:format("Entra 1\n"),
 					digraph:delete(Digraph),
 					InfoTrack;
 				forward -> 
@@ -173,13 +172,35 @@ execute_csp({Exp, Parent}, Previous) ->
 				reverse ->
 					reverse;
 				Answer  ->
-					NExp = 
+					{NExp, NNodes} = 
 						process_answer(Exp, Answer, Parent),
+					case Answer of 
+						[_|_] -> 
+							build_sync_edges(NNodes);
+						_ ->
+							ok
+					end,
 					execute_csp(NExp, [])
 			end
 	end.
 % execute_csp(Par1, Par2) ->
 % 	io:format("Par1: ~p\nPar2: ~p\n", [Par1, Par2]).
+
+build_sync_edges([H|T]) ->
+	[
+		begin 
+			send_message2regprocess(
+				printer,
+				{print_sync, H, E, get_self()}),
+			receive
+				{printed_sync, H, E} ->
+					ok
+			end
+		end 
+	|| E <- T],
+	build_sync_edges(T);
+build_sync_edges(_) ->
+	ok.
 
 process_answer_exe(t, RC, _) ->
 	send_message2regprocess(printer,{get_trace, get_self()}),
@@ -355,10 +376,12 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L =
 			end,
 			receive
 				{created, NParent} ->
-					process_answer(ProcessPrefixing, P, NParent)
+					{NExp, NNodes} = 
+						process_answer(ProcessPrefixing, P, NParent),
+					{NExp, [(NParent - 1)| NNodes]}
 			end;
 		false -> 
-			{P, Parent}
+			{{P, Parent}, []}
 	end;
 process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, Parent) ->
 	send_message2regprocess(
@@ -373,7 +396,9 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, 
 	end,
 	receive
 		{created, NParent} ->
-			process_answer(ProcessPrefixing, P, NParent)
+			{NExp, NNodes} = 
+				process_answer(ProcessPrefixing, P, NParent),
+			{NExp, [(NParent - 1) | NNodes]}
 	end;
 process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
 	Selected = 
@@ -396,7 +421,7 @@ process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
 	end,
 	receive
 		{created, NParent} ->
-			{Selected, NParent}
+			{{Selected, NParent}, []}
 	end;
 process_answer(P = {agent_call, SPAN, ProcessName, Arguments}, P, Parent) ->
 	send_message2regprocess(codeserver, {ask_code, ProcessName, Arguments, get_self()}),
@@ -421,7 +446,7 @@ process_answer(P = {agent_call, SPAN, ProcessName, Arguments}, P, Parent) ->
 	end,
 	receive
 		{created, NParent} ->
-			{NCode, NParent}
+			{{NCode, NParent}, []}
 	end;
 process_answer(IL = {'|||', PA, PB, SPAN}, P, Parent) ->
 	send_message2regprocess(
@@ -432,29 +457,35 @@ process_answer(IL = {'|||', PA, PB, SPAN}, P, Parent) ->
 			{created, NParent0} ->
 				NParent0
 		end,
-	{NPA, ParentA} = 
+	{{NPA, ParentA}, NNodesA} = 
 		process_answer(PA, P, NParent),
-	{NPB, ParentB} = 
+	{{NPB, ParentB}, NNodesB} = 
 		process_answer(PB, P, NParent),
-	{{'|||', 
-		NPA, 
-		NPB, 
-		ParentA,
-		ParentB,
-		SPAN}, 
-	 NParent};
+	{
+		{{'|||', 
+			NPA, 
+			NPB, 
+			ParentA,
+			ParentB,
+			SPAN}, 
+		 NParent},
+		NNodesA ++ NNodesB
+	};
 process_answer({'|||', PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
-	{NPA, NParentA} = 
+	{{NPA, NParentA}, NNodesA} = 
 		process_answer(PA, P, ParentA),
-	{NPB, NParentB} = 
+	{{NPB, NParentB}, NNodesB} = 
 		process_answer(PB, P, ParentB),
-	{{'|||', 
-		NPA, 
-		NPB, 
-		NParentA,
-		NParentB,
-		SPAN}, 
-	 Parent};
+	{
+		{{'|||', 
+			NPA, 
+			NPB, 
+			NParentA,
+			NParentB,
+			SPAN}, 
+		 Parent},
+		NNodesA ++ NNodesB
+	 };
 process_answer(IL = {sharing, {closure, Events}, PA, PB, SPAN}, P, Parent) ->
 	send_message2regprocess(
 		printer,
@@ -464,31 +495,37 @@ process_answer(IL = {sharing, {closure, Events}, PA, PB, SPAN}, P, Parent) ->
 			{created, NParent0} ->
 				NParent0
 		end,
-	{NPA, ParentA} = 
+	{{NPA, ParentA}, NNodesA} = 
 		process_answer(PA, P, NParent),
-	{NPB, ParentB} = 
+	{{NPB, ParentB}, NNodesB} = 
 		process_answer(PB, P, NParent),
-	{{sharing, 
-		{closure, Events}, 
-		NPA, 
-		NPB,
-		ParentA,
-		ParentB,
-		SPAN},
-	NParent};
+	{
+		{{sharing, 
+			{closure, Events}, 
+			NPA, 
+			NPB,
+			ParentA,
+			ParentB,
+			SPAN},
+		NParent},
+		NNodesA ++ NNodesB
+	};
 process_answer({sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
-	{NPA, NParentA} = 
+	{{NPA, NParentA}, NNodesA} = 
 		process_answer(PA, P, ParentA),
-	{NPB, NParentB} = 
+	{{NPB, NParentB}, NNodesB} = 
 		process_answer(PB, P, ParentB),
-	{{sharing, 
-		{closure, Events}, 
-		NPA, 
-		NPB,
-		NParentA,
-		NParentB,
-		SPAN},
-	Parent};
+	{
+		{{sharing, 
+			{closure, Events}, 
+			NPA, 
+			NPB,
+			NParentA,
+			NParentB,
+			SPAN},
+		Parent},
+		NNodesA ++ NNodesB
+	};
 % process_answer({procRenaming, ListRenamings, Proc, SPAN}, P) ->
 % 	{procRenaming, ListRenamings, process_answer(Proc, P), SPAN};
 process_answer(P = {skip, SPAN}, _, Parent) ->
@@ -506,10 +543,10 @@ process_answer(P = {skip, SPAN}, _, Parent) ->
 	end,
 	receive
 		{created, NParent} ->
-			{{finished_skip, SPAN, NParent}, NParent}
+			{{{finished_skip, SPAN, NParent}, NParent}, []}
 	end;
 process_answer(P, Ans, Parent) ->
-	{P, Parent}.
+	{{P, Parent}, []}.
 
 
 
@@ -696,6 +733,51 @@ process_answer_from_track(P = {'|||', PA, PB, ParentA, ParentB, SPAN}, Parent, T
 		 Parent},
 		max(CurrentA, CurrentB)
 	};
+process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, SPAN}, Parent, Track, Current) ->
+	case same_span(SPAN, Track, Current) of 
+		true -> 
+			send_message2regprocess(
+				printer,
+				{create_graph, IL, Parent, get_self()}),
+			NParent = 
+				receive
+					{created, NParent0} ->
+						NParent0
+				end,
+			{{NPA, ParentA}, CurrentA} =
+				process_answer_from_track(PA, NParent, Track, Current + 1), 
+			{{NPB, ParentB}, CurrentB} = 
+				process_answer_from_track(PB, NParent, Track, Current + 1),
+			{
+				{{sharing, 
+					{closure, Events},
+					NPA, 
+					NPB, 
+					ParentA,
+					ParentB,
+					SPAN}, 
+				 NParent},
+				max(CurrentA, CurrentB)
+			};
+		false -> 
+			{{IL, Parent}, Current}
+	end;
+process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Current) ->
+	{{NPA, NParentA}, CurrentA}  = 
+		process_answer_from_track(PA, ParentA, Track, Current), 
+	{{NPB, NParentB}, CurrentB} = 
+		process_answer_from_track(PB, ParentB, Track, Current), 
+	{
+		{{sharing,
+			{closure, Events}, 
+			NPA, 
+			NPB, 
+			NParentA,
+			NParentB,
+			SPAN}, 
+		 Parent},
+		max(CurrentA, CurrentB)
+	};
 process_answer_from_track(P = {skip, SPAN}, Parent, Track, Current) ->
 	case same_span(SPAN, Track, Current) of 
 		true ->
@@ -731,8 +813,7 @@ process_answer_from_track(P = {finished_skip, SPAN, NodeSkip}, Parent, Track, Cu
 
 reverse_options(Track) ->
 	reverse_options_list(get_leaves(Track), Track, []).
-
-
+	
 reverse_options_list([H | T], Track, Acc) ->
 	{NT, NAcc} =
 		case is_option(H, Track) of 
