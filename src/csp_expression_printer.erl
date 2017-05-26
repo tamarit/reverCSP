@@ -22,7 +22,7 @@ csp2string({skip, SPAN}) ->
 csp2string({finished_skip, _, _}) ->
 	"T";
 csp2string(L = [_|_]) ->
-	string:join([csp2string(E) || E <- L], ", ");
+	"\t" ++ string:join([csp2string(E) || E <- L], "\n\t");
 csp2string(Other) ->
 	io:format("Other: ~p\n", [Other]).
 

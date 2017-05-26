@@ -1,6 +1,6 @@
-channel a, b
+channel a, b, c
 
-MAIN = P [|{|a|}|]  R
+MAIN = c -> (P [|{|a|}|]  R)
 
 R = Q [|{|b|}|] S
 
