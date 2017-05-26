@@ -191,7 +191,18 @@ execute_csp({Exp, Parent}, Previous) ->
 						process_answer(Exp, Answer, Parent),
 					case Answer of 
 						[_|_] -> 
-							build_sync_edges(NNodes);
+							build_sync_edges(NNodes),
+							% io:format("~p\n", [lists:seq(1, length(NNodes) - 1)]),
+							[ begin
+								send_message2regprocess(
+									printer,
+									{unprint_last, get_self()}),
+								receive
+									unprinted_last ->
+										ok
+								end
+							 end
+							|| _ <- lists:seq(1, length(NNodes) - 1)];
 						_ ->
 							ok
 					end,
@@ -811,10 +822,16 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 		fun(Nodes) -> 
 			lists:usort(
 				[begin 
-					{Node, {NodeTerm,_}} = digraph:vertex(Track, N), 
-					case lists:member(list_to_atom(NodeTerm), Events) of 
-						true -> 
-							Node;
+					% io:format("~p\n", [digraph:vertex(Track, N)]),
+					case digraph:vertex(Track, N) of 
+						{Node, {NodeTerm,_}} ->  
+							case lists:member(list_to_atom(NodeTerm), Events) of 
+								true -> 
+									Node;
+								false -> 
+									none 
+							end;
+						% TODO: Should not be happening
 						false -> 
 							none 
 					end
@@ -835,6 +852,21 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 	SyncEventsB = 
 		[E || E <- SyncEventsFun(NNodesB), E /= none],
 	build_sync_edges(SyncEventsA ++ SyncEventsB),
+	case length(SyncEventsA ++ SyncEventsB) > 0 of 
+		true -> 
+			[ begin
+				send_message2regprocess(
+					printer,
+					{unprint_last_from, Events, get_self()}),
+				receive
+					unprinted_last ->
+						ok
+				end
+			 end
+			|| _ <- lists:seq(1, length(SyncEventsA ++ SyncEventsB) - 1)];
+		false -> 
+			ok
+	end,
 	% io:format("NNodesA: ~w, NNodesB ~w, Current: ~p\n", [NNodesA, NNodesB, max(CurrentA, CurrentB)]),
 	{
 		{{sharing,
