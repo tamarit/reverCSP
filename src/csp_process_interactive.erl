@@ -124,6 +124,7 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 			","),
 	csp_process_interactive:remove_from_track(H, NG),
 	register_printer(),
+	io:format("H: ~w\n", [H]),
 	Result = {_, ResExp} = 
 		start_from_track(FirstProcess, NG),
 	digraph:delete(NG),
@@ -136,7 +137,9 @@ prepare_questions_reverse(_, [], _) ->
 	[].
 
 process_answer_reverse(t, RC, {Trace,_}) ->
-	io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace]), 
+	io:format(
+		"\n*********** Trace ************\n\n~s\n******************************\n",
+		[Trace]), 
 	RC();
 process_answer_reverse(c, RC, {_,PT}) ->
 	PT(),
@@ -608,10 +611,10 @@ start_from_track(FirstProcess, Track) ->
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
 	case digraph:vertices(Track) of 
 		[_|_] ->
-			% io:format("INIT ~p\n", [get_max_vertex(Track) + 1]),
+			io:format("INIT ~p\n", [get_max_vertex(Track) + 1]),
 			{NExp, NNodes} = 
 				execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
-			% io:format("FINAL NNodes2: ~w\n", [NNodes]),
+			io:format("FINAL NNodes2: ~w\n", [NNodes]),
 			send_message2regprocess(printer,{info_graph,get_self()}),
 			InfoGraph = 
 				receive 
@@ -663,7 +666,7 @@ process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing,
 							Track, 
 							Current + 2),
 					% io:format("Add ~w to NNodes for event ~p (~p)\n", [[(NParent - 1) | NNodes], Event, SPAN1]),
-					{Nexp, NCurrent, [(NParent - 1) | NNodes]}
+					{Nexp, NCurrent, [{Current, (NParent - 1)} | NNodes]}
 			end;
 		false ->
 			{{P, Parent}, Current, []}
@@ -822,21 +825,23 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 		fun(Nodes) -> 
 			lists:usort(
 				[begin 
+					% io:format("~p\n", [lists:sort(digraph:vertices(Track))]),
 					% io:format("~p\n", [digraph:vertex(Track, N)]),
-					case digraph:vertex(Track, N) of 
-						{Node, {NodeTerm,_}} ->  
+					case digraph:vertex(Track, OldN) of 
+						{OldN, {NodeTerm,_}} ->  
 							case lists:member(list_to_atom(NodeTerm), Events) of 
 								true -> 
-									Node;
+									NewN;
 								false -> 
 									none 
 							end;
 						% TODO: Should not be happening
 						false -> 
+							io:format("******It's happening\n"),
 							none 
 					end
 				end 
-				|| N <- Nodes])
+				|| {OldN, NewN} <- Nodes])
 		end,
 	SyncEventsA = 
 		[E || E <- SyncEventsFun(NNodesA), E /= none],
@@ -848,7 +853,8 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 				CurrentA
 		end,
 	{{NPB, NParentB}, CurrentB, NNodesB} = 
-		process_answer_from_track(PB, ParentB, Track, CurrentB0), 
+		% process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, SyncEventsA /= []), 
+		process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false), 
 	SyncEventsB = 
 		[E || E <- SyncEventsFun(NNodesB), E /= none],
 	build_sync_edges(SyncEventsA ++ SyncEventsB),
@@ -867,7 +873,8 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 		false -> 
 			ok
 	end,
-	% io:format("NNodesA: ~w, NNodesB ~w, Current: ~p\n", [NNodesA, NNodesB, max(CurrentA, CurrentB)]),
+	io:format("SyncEventsA: ~p\n", [SyncEventsA]),
+	io:format("NNodesA: ~w, NNodesB ~w, Current: ~p\n", [NNodesA, NNodesB, max(CurrentA, CurrentB)]),
 	{
 		{{sharing,
 			{closure, Events}, 
@@ -906,6 +913,17 @@ process_answer_from_track(P = {finished_skip, SPAN, NodeSkip}, Parent, Track, Cu
 	{{P, Parent}, Current, []}.
 
 
+process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false) -> 
+	process_answer_from_track(PB, ParentB, Track, CurrentB0);
+process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, true) -> 
+	case process_answer_from_track(PB, ParentB, Track, CurrentB0) of 
+		{_, _, []} ->  
+			io:format("Not found sync\n"),
+			process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0 + 1, true);
+		Other -> 
+			io:format("Found sync\n"),
+			Other
+	end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -923,9 +941,9 @@ reverse_options_list([H | T], Track, Acc) ->
 			true ->
 				SyncNodes0 = 
 					[begin
-						% io:format("E: ~p, H:\n")
 						{E, From, To, Type} = 
 							digraph:edge(Track, E),
+						% io:format("From: ~p, To:~p, Type: ~p\n", [From, To, Type]),
 						SyncNode = 
 							case From of 
 								H -> 
@@ -935,7 +953,7 @@ reverse_options_list([H | T], Track, Acc) ->
 							end,
 						case {Type, SyncNode /= H} of 
 							{"sync", true} -> 
-								[From];
+								[SyncNode];
 							_ -> 
 								[] 
 						end
@@ -977,6 +995,7 @@ is_option(N, Track) ->
 	end.
 
 remove_from_track(N, Track) ->
+	io:format("\tremove_from_track N: ~p\n", [N]),
 	Ns = 
 		case is_list(N) of 
 			true -> 
@@ -984,6 +1003,7 @@ remove_from_track(N, Track) ->
 			false -> 
 				[N]
 		end,
+	io:format("\tremove_from_track Reachable: ~p\n", [digraph_utils:reachable(Ns, Track)]),
 	digraph:del_vertices(
 		Track, 
 		digraph_utils:reachable(Ns, Track)),
