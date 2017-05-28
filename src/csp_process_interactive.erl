@@ -87,7 +87,7 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 					{t, "See current trace."},
 					{c, "Print current track."},
 					{e, "Forward evaluation."},
-					{f, "Finish."}
+					{f, "Finish evaluation."}
 				],
 			case ask_questions(
 					ReverseOptionsReady ++ AdditionalOptions, 
@@ -161,7 +161,9 @@ process_answer_reverse(Other, _, _) ->
 execute_csp({Exp, Parent}, Previous) ->
 	Questions = get_questions(Exp, []),
 	% io:get_line(standard_io, format("****State****\n~s\n****Options****\n~s\n************\n", [csp_expression_printer:csp2string(Exp), lists:join("\n", [ csp_expression_printer:csp2string(Q) || Q <- Questions])])),
-	% io:format("\n\nCurrent expression:\n~s\n\n", [csp_expression_printer:csp2string(Exp)]),
+	io:format(
+		"\n\nCurrent expression:\n~s\n\n", 
+		[csp_expression_printer:csp2string(Exp)]),
 	case Questions of 
 		[] ->
 			% TODO: Should ask before if the user wants to undo or reverse.
@@ -261,25 +263,45 @@ build_str_tuples(List) ->
 	[{E, csp_expression_printer:csp2string(E)} || E <- List].
 
 ask_questions(List, ProcessAnswer, Data) ->
-	 {_, Lines0, Ans0, AnsDict0} = 
-	    lists:foldl(
-	        fun build_question_option/2,
-	        {1, [], [], dict:new()}, 
-	        lists:droplast(List)),
-	{_, Lines, Ans, AnsDict} =
-		build_question_option(
-			lists:last(List), 
-			{0, Lines0, Ans0, AnsDict0}),
-    QuestionLines = 
-        ["These are the available options: " | lists:reverse(Lines)]
-    ++  ["What do you want to do?" 
-         | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
-    Answer = 
-        get_answer(
-        	string:join(QuestionLines,"\n"), 
-        	[0 | lists:seq(1, length(Ans))]),
+	{FAnswer, FAnsDict} = 
+		case lists:last(List) of 
+			{f, _} -> 
+				 {_, Lines0, Ans0, AnsDict0} = 
+				    lists:foldl(
+				        fun build_question_option/2,
+				        {1, [], [], dict:new()}, 
+				        lists:droplast(List)),
+				{_, Lines, Ans, AnsDict} =
+					build_question_option(
+						lists:last(List), 
+						{0, Lines0, Ans0, AnsDict0}),
+			    QuestionLines = 
+			        ["These are the available options: " | lists:reverse(Lines)]
+			    ++  ["What do you want to do?" 
+			         | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
+			    Answer = 
+			        get_answer(
+			        	string:join(QuestionLines,"\n"), 
+			        	[0 | lists:seq(1, length(Ans) - 1)]),
+			    {Answer, AnsDict};
+			_ -> 
+				 {_, Lines, Ans, AnsDict} = 
+				    lists:foldl(
+				        fun build_question_option/2,
+				        {1, [], [], dict:new()}, 
+				        List),
+			    QuestionLines = 
+			        ["These are the available options: " | lists:reverse(Lines)]
+			    ++  ["What do you want to do?" 
+			         | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
+			    Answer = 
+			        get_answer(
+			        	string:join(QuestionLines,"\n"), 
+			        	lists:seq(1, length(Ans))),
+			    {Answer, AnsDict}
+		end,
     ProcessAnswer(
-    	dict:fetch(Answer, AnsDict), 
+    	dict:fetch(FAnswer, FAnsDict), 
     	fun() -> ask_questions(List, ProcessAnswer, Data) end, 
     	Data).
 
