@@ -42,10 +42,10 @@ start_from_expr(FirstProcess, FirstExp) ->
 				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
 			% csp_tracker:print_from_digraph(Digraph, "current2", [], false),
 			register_printer(),
-			start_reverse_mode(FirstProcess, start_from_track(FirstProcess, Digraph))
+			start_reverse_mode(FirstProcess, start_from_track(FirstProcess, Digraph), [])
 	end.
 
-start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, ResExp}) ->
+start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, ResExp}, Previous) ->
 	io:format(
 		"\n\nCurrent expression:\n~s\n\n", 
 		[csp_expression_printer:csp2string(ResExp)]),
@@ -61,7 +61,7 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 	% io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[Trace]),
 	ReverseOptions = 
 		reverse_options(Digraph),
-	io:format("Reverse options: ~w\n", [ReverseOptions]),
+	% io:format("Reverse options: ~w\n", [ReverseOptions]),
 	% io:get_line(standard_io, "PRESS INTRO TO CONTINUE..."),
 	case ReverseOptions of 
 		[] ->
@@ -69,8 +69,9 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 			case 
 				ask_questions(
 					[
-						{t, "See current trace."},
-						{c, "Print current track."},
+						% Track and trace are empty so these options has no sense here.
+						% {t, "See current trace."},
+						% {c, "Print current track."},
 						{e, "Forward evaluation."}, 
 						{f, "Finish evaluation."}
 					], 
@@ -89,27 +90,48 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 				prepare_questions_reverse(FirstProcess, ReverseOptions, Digraph),
 			AdditionalOptions = 
 				[
+					{rr, "Random choice."},
 					{t, "See current trace."},
 					{c, "Print current track."},
 					{e, "Forward evaluation."},
 					{f, "Finish evaluation."}
 				],
-			case ask_questions(
-					ReverseOptionsReady ++ AdditionalOptions, 
-					fun process_answer_reverse/3, 
-					{Trace, PrintCurrentTrack}) 
-			of 
-				finish -> 
-					digraph:delete(Digraph),
-					InfoTrack;
-				forward -> 
-					register_printer(),
-					start_from_track_continue_user(FirstProcess, Digraph);
-				NEvalInfo -> 
-					digraph:delete(Digraph),
-					start_reverse_mode(FirstProcess, NEvalInfo)
+			case Previous of 
+				0 -> 
+					start_reverse_mode(FirstProcess, {InfoTrack, ResExp}, Previous);
+				N when is_integer(N) -> 
+					start_reverse_mode_random(FirstProcess, ReverseOptionsReady, Digraph, Previous);
+				_ -> 
+					case ask_questions(
+							ReverseOptionsReady ++ AdditionalOptions, 
+							fun process_answer_reverse/3, 
+							{Trace, PrintCurrentTrack}) 
+					of 
+						finish -> 
+							digraph:delete(Digraph),
+							InfoTrack;
+						forward -> 
+							register_printer(),
+							start_from_track_continue_user(FirstProcess, Digraph);
+						random_reverse ->
+							Steps = 
+						        get_answer(
+						        	"\nHow many steps?\n[1..1000]: ", 
+						        	lists:seq(1, 1000)),
+							start_reverse_mode_random(FirstProcess, ReverseOptionsReady, Digraph, Steps);				
+						NEvalInfo -> 
+							digraph:delete(Digraph),
+							start_reverse_mode(FirstProcess, NEvalInfo, Previous)
+					end
 			end
 	end.
+
+start_reverse_mode_random(FirstProcess, Options, Digraph, Steps) -> 
+	{NEvalInfo, Printed} = 
+		lists:nth(random:uniform(length(Options)), Options),
+	io:format("\nRandomly selected:\n~s\n", [Printed]),
+	digraph:delete(Digraph),
+	start_reverse_mode(FirstProcess, NEvalInfo, Steps - 1).
 
 prepare_questions_reverse(FirstProcess, [H | T], G) ->
 	NG = copy_digraph(G),
@@ -154,6 +176,8 @@ process_answer_reverse(e, _, _) ->
 	forward;
 process_answer_reverse(f, _, _) ->
 	finish;
+process_answer_reverse(rr, _, _) ->
+	random_reverse;
 process_answer_reverse(Other, _, _) ->
 	Other.
 
