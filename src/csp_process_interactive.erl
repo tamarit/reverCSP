@@ -594,18 +594,21 @@ process_answer({sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, P, 
 process_answer({';', PA, PB, SPAN}, P, Parent) ->
 	{{NPA, NParentA}, NNodesA} = 
 		process_answer(PA, P, Parent),
-	NSC = 
+	NSC_NParent = 
 		case NPA of 
-			{finished_skip, _, NodesSkipA} -> 
+			{finished_skip, _, NodesSkipA} ->
 				send_message2regprocess(
 					printer, 
 					{create_graph, 
 						{';', NodesSkipA, SPAN}, -1, get_self()}),
-				PB;
+				receive
+					{created, NParent0} ->
+						{PB, NParent0}
+				end;
 			_ -> 
-				{';', NPA, PB, SPAN}
+				{{';', NPA, PB, SPAN}, NParentA}
 		end,
-	{{NSC, NParentA}, NNodesA};
+	{NSC_NParent, NNodesA};
 process_answer(P = {skip, SPAN}, _, Parent) ->
 	Event = 
 		'   tau (SKIP)',
@@ -936,6 +939,24 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 					SPAN}
 		end,
 	{{NProcess, Parent}, max(CurrentA, CurrentB), NNodesA ++ NNodesB};
+process_answer_from_track(P = {';', PA, PB, SPAN}, Parent, Track, Current) ->
+	{{NPA, NParentA}, NCurrent, NNodesA}  = 
+		process_answer_from_track(PA, Parent, Track, Current), 
+	NSC_NParent = 
+		case NPA of 
+			{finished_skip, _, NodesSkipA} ->
+				send_message2regprocess(
+					printer, 
+					{create_graph, 
+						{';', NodesSkipA, SPAN}, -1, get_self()}),
+				receive
+					{created, NParent0} ->
+						{PB, NParent0}
+				end;
+			_ -> 
+				{{';', NPA, PB, SPAN}, NParentA}
+		end,
+	{NSC_NParent, NCurrent, NNodesA};
 process_answer_from_track(P = {skip, SPAN}, Parent, Track, Current) ->
 	case same_span(SPAN, Track, Current) of 
 		true ->

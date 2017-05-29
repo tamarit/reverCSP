@@ -2,3 +2,4 @@ forth random n steps —> report the actions done
 back random n steps  —> report the actions done
 forth-back n random steps  —> report the actions done
 go back to certain element of the trace -> simply left as it is
+allow the internal choice as option in reverse evaluation
