@@ -68,7 +68,12 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 			io:format("The track is empty, so there is nothing to reverse.\n"),
 			case 
 				ask_questions(
-					[{e, "Forward evaluation."}, {f, "Finish."}], 
+					[
+						{t, "See current trace."},
+						{c, "Print current track."},
+						{e, "Forward evaluation."}, 
+						{f, "Finish evaluation."}
+					], 
 					fun process_answer_reverse/3, 
 					[])
 			of 
@@ -169,53 +174,78 @@ execute_csp({Exp, Parent}, Previous) ->
 			% TODO: Should ask before if the user wants to undo or reverse.
 			io:format("This CSP expression cannot be further evaluated.\n"),
 			ask_questions(
-				[{t, "See current trace."}, {c, "Print current track."}, 
-				 {r, "Reverse evaluation."}, {f, "Finish evaluation."}],
+				[
+					{t, "See current trace."}, 
+					{c, "Print current track."}, 
+				 	{r, "Reverse evaluation."}, 
+				 	{f, "Finish evaluation."}
+				],
 				fun process_answer_exe/3,
 				[]);
 		_ ->
-			AdditionalOptions = 
-				[
-					{t, "See current trace."},
-					{c, "Print current track."},
-					{r, "Reverse evaluation."},
-					{f, "Finish evaluation."}
-				],
-			case ask_questions(
-					build_str_tuples(Questions) ++ AdditionalOptions, 
-					fun process_answer_exe/3,
-					[]) 
-			of 
-				finish ->
-					finish;
-				reverse ->
-					reverse;
-				Answer  ->
-					% io:format("Answer: ~p\n", [Answer]),
-					{NExp, NNodes} = 
-						process_answer(Exp, Answer, Parent),
-					case Answer of 
-						[_|_] -> 
-							build_sync_edges(NNodes),
-							% io:format("~p\n", [lists:seq(1, length(NNodes) - 1)]),
-							[ begin
-								send_message2regprocess(
-									printer,
-									{unprint_last, get_self()}),
-								receive
-									unprinted_last ->
-										ok
-								end
-							 end
-							|| _ <- lists:seq(1, length(NNodes) - 1)];
-						_ ->
-							ok
-					end,
-					execute_csp(NExp, [])
+			case Previous of 
+				0 -> 
+					execute_csp({Exp, Parent}, []);
+				N when is_integer(N) -> 
+					execute_csp_random({Exp, Parent}, Questions, Previous);
+				_ -> 
+					AdditionalOptions = 
+						[
+							{rf, "Random choice."},
+							{t, "See current trace."},
+							{c, "Print current track."},
+							{r, "Reverse evaluation."},
+							{f, "Finish evaluation."}
+						],
+					case ask_questions(
+							build_str_tuples(Questions) ++ AdditionalOptions, 
+							fun process_answer_exe/3,
+							[]) 
+					of 
+						finish ->
+							finish;
+						reverse ->
+							reverse;
+						random_forward -> 
+							Steps = 
+						        get_answer(
+						        	"\nHow many steps?\n[1..1000]: ", 
+						        	lists:seq(1, 1000)),
+							execute_csp_random({Exp, Parent}, Questions, Steps);
+						Answer  ->
+							% io:format("Answer: ~p\n", [Answer]),
+							csp_process_option_processing(Exp, Answer, Parent, Previous)
+					end
 			end
 	end.
-% execute_csp(Par1, Par2) ->
-% 	io:format("Par1: ~p\nPar2: ~p\n", [Par1, Par2]).
+
+csp_process_option_processing(Exp, Answer, Parent, Pending) ->
+	{NExp, NNodes} = 
+		process_answer(Exp, Answer, Parent),
+	case Answer of 
+		[_|_] -> 
+			build_sync_edges(NNodes),
+			% io:format("~p\n", [lists:seq(1, length(NNodes) - 1)]),
+			[ begin
+				send_message2regprocess(
+					printer,
+					{unprint_last, get_self()}),
+				receive
+					unprinted_last ->
+						ok
+				end
+			 end
+			|| _ <- lists:seq(1, length(NNodes) - 1)];
+		_ ->
+			ok
+	end,
+	execute_csp(NExp, Pending).
+
+execute_csp_random({Exp, Parent}, Options, Steps) -> 
+	Answer = 
+		lists:nth(random:uniform(length(Options)), Options),
+	io:format("\nRandomly selected:\n~s\n", [csp_expression_printer:csp2string(Answer)]),
+	csp_process_option_processing(Exp, Answer, Parent, Steps - 1).
 
 build_sync_edges([H|T]) ->
 	[
@@ -256,6 +286,8 @@ process_answer_exe(r, _, _) ->
 	reverse;
 process_answer_exe(f, _, _) ->
 	finish;
+process_answer_exe(rf, _, _) ->
+	random_forward;
 process_answer_exe(Other, _, _) ->
 	Other.
 
@@ -265,6 +297,7 @@ build_str_tuples(List) ->
 ask_questions(List, ProcessAnswer, Data) ->
 	{FAnswer, FAnsDict} = 
 		case lists:last(List) of 
+			% To place finish option allways in the number 0
 			{f, _} -> 
 				 {_, Lines0, Ans0, AnsDict0} = 
 				    lists:foldl(
@@ -284,6 +317,7 @@ ask_questions(List, ProcessAnswer, Data) ->
 			        	string:join(QuestionLines,"\n"), 
 			        	[0 | lists:seq(1, length(Ans) - 1)]),
 			    {Answer, AnsDict};
+			% When there is no finish
 			_ -> 
 				 {_, Lines, Ans, AnsDict} = 
 				    lists:foldl(
