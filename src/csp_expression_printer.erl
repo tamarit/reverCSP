@@ -19,6 +19,8 @@ csp2string({sharing, {closure, Events}, PA, PB, _, _, _}) ->
 	brackets(csp2string(PA) ++ " [|{|" ++ events_to_str(Events) ++ "|}|] " ++ csp2string(PB));
 csp2string({skip, SPAN}) ->
 	"SKIP";
+csp2string({';', PA, PB, _}) ->
+	brackets(csp2string(PA))++ ";" ++ brackets(csp2string(PB));
 csp2string({finished_skip, _, _}) ->
 	"T";
 csp2string(L = [_|_]) ->
