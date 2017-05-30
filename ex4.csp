@@ -1,0 +1,7 @@
+channel a, b
+
+MAIN = (P [|{|a|}|]  Q) ; b -> SKIP
+
+P = a -> b -> SKIP
+
+Q = b -> a -> (b -> SKIP |~| Q)

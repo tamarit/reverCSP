@@ -1,5 +1,6 @@
-forth random n steps —> report the actions done
-back random n steps  —> report the actions done
-forth-back n random steps  —> report the actions done
-go back to certain element of the trace -> simply left as it is
-allow the internal choice as option in reverse evaluation
+- go back to certain element of the trace -> simply left as it is
+- allow the internal choice as option in reverse evaluation
+- Undo
+- Padding for options when there is more than 10 options
+- Fix problem with ETS tables
+- breakpoints: We want 3 types (forth, back, both) or only one?
