@@ -4,3 +4,4 @@
 - Padding for options when there is more than 10 options
 - Fix problem with ETS tables
 - breakpoints: We want 3 types (forth, back, both) or only one?
+- disable stops for internal choices when running randomly.

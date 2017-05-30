@@ -47,13 +47,13 @@ run(File, FirstProcess) ->
 					     false -> 
 					     	register(codeserver, spawn(codeserver,loop,[Processes]))
 					end,
-					case lists:member(printer,registered()) of
-					     true -> ok;
-					     false -> 
-					     	register(printer, 
-					         spawn(printer,loop,
-					            [all, false]))
-					end,					
+					% case lists:member(printer,registered()) of
+					%      true -> ok;
+					%      false -> 
+					%      	register(printer, 
+					%          spawn(printer,loop,
+					%             [all, false]))
+					% end,					
 					{{{N,E,S,_},_G,Trace}, DigraphContent} = 
 						csp_process_interactive:start(FirstProcess),
 					{NodesDigraph, EdgesDigraph} = DigraphContent,

@@ -7,10 +7,6 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Main interface
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
--record(digraph, {vtab = notable :: ets:tab(),
-		  etab = notable :: ets:tab(),
-		  ntab = notable :: ets:tab(),
-	          cyclic = true  :: boolean()}).
 
 
 start(FirstProcess) -> 
@@ -18,10 +14,11 @@ start(FirstProcess) ->
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
 	start_from_expr(FirstProcess, FirstExp, []).
 
-start_from_expr(FirstProcess, FirstExp, Previous) -> 
+start_from_expr(FirstProcess, FirstExp, Previous) ->
+	register_printer(),
 	ResultExe = 
 		execute_csp({FirstExp, -1}, Previous),
-	send_message2regprocess(printer,{info_graph,get_self()}),
+	send_message2regprocess(printer,{info_graph_no_stop,get_self()}),
 	InfoGraph = 
 		receive 
 			{info_graph, InfoGraph_} ->
@@ -31,7 +28,11 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 			1000 -> 
 				{{{0,0,0,now()},"",""},{[],[]}}
 		end,
-	send_message2regprocess(printer,stop),
+		send_message2regprocess(printer,{stop, self()}),
+	receive 
+		stopped -> 
+			ok
+	end,
 	case ResultExe of 
 		finish -> 
 			InfoGraph;
@@ -42,10 +43,11 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 			Digraph = 
 				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
 			% csp_tracker:print_from_digraph(Digraph, "current2", [], false),
-			register_printer(),
+			EvalInfo = 
+				start_from_track(FirstProcess, Digraph),
 			start_reverse_mode(
 				FirstProcess, 
-				start_from_track(FirstProcess, Digraph), 
+				EvalInfo,
 				Pending);
 		{forward_reverse, Steps} -> 
 			random_forward_reverse_action_from_forward(
@@ -67,12 +69,13 @@ random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) ->
 		= InfoGraph,
 	Digraph = 
 		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-	register_printer(),
 	case EvalOrder of 
 		reverse -> 
+			EvalInfo = 
+				start_from_track(FirstProcess, Digraph),
 			start_reverse_mode(
 				FirstProcess, 
-				start_from_track(FirstProcess, Digraph), 
+				EvalInfo,
 				{forward_reverse, Steps});
 		forward -> 
 			start_from_track_continue_user(
@@ -88,7 +91,7 @@ random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, ResExp}, Previous) ->
+start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphContent}, ResExp}, Previous) ->
 	% io:format("Previous: ~p\n", [Previous]),
 	{NodesDigraph, EdgesDigraph} = 
 		DigraphContent,
@@ -109,7 +112,6 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 		{forward_reverse, N} when is_integer(N) andalso N > 0 -> 
 			case ReverseOptions of 
 				[] -> 
-					register_printer(),
 					start_from_track_continue_user(
 						FirstProcess, 
 						Digraph, 
@@ -147,7 +149,6 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 							% io:format("NDigraphContent: ~p\n", [NDigraphContent]),
 							NDigraph = 
 								csp_tracker:build_digraph(NNodesDigraph, NEdgesDigraph),
-							register_printer(),
 							start_from_track_continue_user(
 								FirstProcess, 
 								NDigraph, 
@@ -177,7 +178,6 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 							digraph:delete(Digraph),
 							InfoTrack;
 						forward -> 
-							register_printer(),
 							start_from_track_continue_user(FirstProcess, Digraph, [])
 					end;
 				[_|_] ->
@@ -186,6 +186,7 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 					AdditionalOptions = 
 						[
 							{rr, "Random choice."},
+							{rfr, "Random forward-reverse choice."},
 							{t, "See current trace."},
 							{c, "Print current track."},
 							{e, "Forward evaluation."},
@@ -193,7 +194,8 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 						],
 					case Previous of 
 						0 -> 
-							start_reverse_mode(FirstProcess, {InfoTrack, ResExp}, Previous);
+							digraph:delete(Digraph),
+							start_reverse_mode(FirstProcess, {InfoTrack, ResExp}, []);
 						N when is_integer(N) -> 
 							start_reverse_mode_random(FirstProcess, ReverseOptionsReady, Digraph, Previous);
 						_ -> 
@@ -206,7 +208,6 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 									digraph:delete(Digraph),
 									InfoTrack;
 								forward -> 
-									register_printer(),
 									start_from_track_continue_user(FirstProcess, Digraph, []);
 								random_reverse ->
 									Steps = 
@@ -214,6 +215,31 @@ start_reverse_mode(FirstProcess, {InfoTrack = {{_,_,Trace}, DigraphContent}, Res
 								        	"\nHow many steps?\n[1..1000]: ", 
 								        	lists:seq(1, 1000)),
 									start_reverse_mode_random(FirstProcess, ReverseOptionsReady, Digraph, Steps);				
+								random_forward_reverse -> 
+									Steps = 
+								        get_answer(
+								        	"\nHow many steps?\n[1..1000]: ", 
+								        	lists:seq(1, 1000)),
+									EvalOrder = 
+										case random:uniform(2) of 
+											1 -> 
+												reverse;
+											2 -> 
+												forward
+										end,
+									case EvalOrder of 
+										reverse -> 
+											digraph:delete(Digraph),
+											start_reverse_mode(
+												FirstProcess, 
+												EvalInfo, 
+												{forward_reverse, Steps});
+										forward -> 
+											start_from_track_continue_user(
+												FirstProcess, 
+												Digraph, 
+												{forward_reverse, Steps})
+									end;
 								NEvalInfo -> 
 									digraph:delete(Digraph),
 									start_reverse_mode(FirstProcess, NEvalInfo, Previous)
@@ -246,11 +272,9 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 				|| N <- Ns]),
 			","),
 	csp_process_interactive:remove_from_track(H, NG),
-	register_printer(),
 	% io:format("H: ~w\n", [H]),
 	Result = {_, ResExp} = 
 		start_from_track(FirstProcess, NG),
-	digraph:delete(NG),
 	Printed = 
 			NodeStr ++ "\n\t\\__ "  
 		++ 	csp_expression_printer:csp2string(ResExp),
@@ -274,6 +298,8 @@ process_answer_reverse(f, _, _) ->
 	finish;
 process_answer_reverse(rr, _, _) ->
 	random_reverse;
+process_answer_reverse(rfr, _, _) ->
+	random_forward_reverse;
 process_answer_reverse(Other, _, _) ->
 	Other.
 
@@ -299,6 +325,7 @@ execute_csp({Exp, Parent}, Previous) ->
 						lists:nth(random:uniform(length(Questions)), Questions),
 					io:format("\nForward evaluation. Randomly selected:\n~s\n", [csp_expression_printer:csp2string(Answer)]),
 					csp_process_option_processing(Exp, Answer, Parent),
+					% io:format("PASA1\n"),
 					{forward_reverse, N - 1}
 			end;
 		_ -> 
@@ -825,6 +852,8 @@ process_answer(P, Ans, Parent) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 start_from_track_continue_user(FirstProcess, Track, Previous) -> 
+	% io:format("ENTRA1\n"),
+	register_printer(),
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
 	try digraph:vertices(Track) of 
@@ -836,38 +865,50 @@ start_from_track_continue_user(FirstProcess, Track, Previous) ->
 					0, 
 					get_max_vertex(Track) + 1),
 			% io:format("FINAL NNodes1: ~w\n", [NNodes]),
+			digraph:delete(Track),
 			start_from_expr(FirstProcess, NExp, Previous);
 		[] ->
+			digraph:delete(Track),
 			start_from_expr(FirstProcess, FirstExp, Previous)
 	catch 
 		_:_ -> 
+			digraph:delete(Track),
 			start_from_expr(FirstProcess, FirstExp, Previous)
 	end.
 
 start_from_track(FirstProcess, Track) -> 
+	% io:format("ENTRA2\n"),
+	register_printer(),
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
-	case digraph:vertices(Track) of 
-		[_|_] ->
-			% io:format("INIT ~p\n", [get_max_vertex(Track) + 1]),
-			{NExp, NNodes} = 
-				execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
-			% io:format("FINAL NNodes2: ~w\n", [NNodes]),
-			send_message2regprocess(printer,{info_graph,get_self()}),
-			InfoGraph = 
-				receive 
-					{info_graph, InfoGraph_} ->
-						% io:format("~p\n", [InfoGraph_]),
-						InfoGraph_
-				after 
-					1000 -> 
-						{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
-				end,
-			send_message2regprocess(printer,stop),
-			{InfoGraph, NExp};
-		[] ->
-			{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
-	end.
+	NState = 
+		case digraph:vertices(Track) of 
+			[_|_] ->
+				% io:format("INIT ~p\n", [get_max_vertex(Track) + 1]),
+				{NExp, NNodes} = 
+					execute_csp_from_track({FirstExp, -1}, Track, 0, get_max_vertex(Track) + 1),
+				% io:format("FINAL NNodes2: ~w\n", [NNodes]),
+				send_message2regprocess(printer,{info_graph_no_stop,get_self()}),
+				InfoGraph = 
+					receive 
+						{info_graph, InfoGraph_} ->
+							% io:format("~p\n", [InfoGraph_]),
+							InfoGraph_
+					after 
+						1000 -> 
+							{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
+					end,
+				{InfoGraph, NExp};
+			[] ->
+				{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
+		end,
+	digraph:delete(Track),
+	send_message2regprocess(printer,{stop, self()}),
+	receive 
+		stopped -> 
+			ok
+	end,
+	NState.
 
 execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
 	% io:format("Current: ~p\n", [Current]),
@@ -1367,7 +1408,19 @@ register_printer() ->
 	     true -> 
 	     	ok;
 	     false -> 
-	     	register(printer, 
-	        spawn(printer,loop,
-	            [all, false]))
+	     	Self = self(),
+	     	register(
+	     		printer, 
+		        spawn(printer,loop,
+		            [all, false])),
+	     	wait_registered()
+	end.
+
+wait_registered() -> 
+	case lists:member(printer,registered()) of
+	     false -> 
+	     	register_printer(),
+	     	wait_registered();
+	     true -> 
+	     	ok
 	end.
