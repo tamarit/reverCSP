@@ -1,3 +1,4 @@
+- Repeated events in reverse trace
 - go back to certain element of the trace -> simply left as it is
 - allow the internal choice as option in reverse evaluation
 - Undo
