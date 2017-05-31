@@ -58,12 +58,7 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 
 random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) -> 
 	EvalOrder = 
-		case random:uniform(2) of 
-			1 -> 
-				reverse;
-			2 -> 
-				forward
-		end,
+		decide_eval_order(),
 	% io:format("Selected ~p mode.", [EvalOrder]),
 	{{_,_,_}, {NodesDigraph, EdgesDigraph}}
 		= InfoGraph,
@@ -124,18 +119,11 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 						prepare_questions_reverse(FirstProcess, ReverseOptions, Digraph),
 					{NEvalInfo, Printed} = 
 						lists:nth(
-							random:uniform(length(ReverseOptionsReady)), 
+							rand:uniform(length(ReverseOptionsReady)), 
 							ReverseOptionsReady),
 					io:format("\nReverse evaluation. Randomly selected:\n~s\n", [Printed]),
 					digraph:delete(Digraph),
-					EvalOrder = 
-						case random:uniform(2) of 
-							1 -> 
-								reverse;
-							2 -> 
-								forward
-						end,
-					case EvalOrder of 
+					case decide_eval_order() of 
 						reverse -> 
 							start_reverse_mode(
 								FirstProcess, 
@@ -220,14 +208,7 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 								        get_answer(
 								        	"\nHow many steps?\n[1..1000]: ", 
 								        	lists:seq(1, 1000)),
-									EvalOrder = 
-										case random:uniform(2) of 
-											1 -> 
-												reverse;
-											2 -> 
-												forward
-										end,
-									case EvalOrder of 
+									case decide_eval_order() of 
 										reverse -> 
 											digraph:delete(Digraph),
 											start_reverse_mode(
@@ -250,7 +231,7 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 
 start_reverse_mode_random(FirstProcess, Options, Digraph, Steps) -> 
 	{NEvalInfo, Printed} = 
-		lists:nth(random:uniform(length(Options)), Options),
+		lists:nth(rand:uniform(length(Options)), Options),
 	io:format("\nRandomly selected:\n~s\n", [Printed]),
 	digraph:delete(Digraph),
 	start_reverse_mode(FirstProcess, NEvalInfo, Steps - 1).
@@ -322,9 +303,11 @@ execute_csp({Exp, Parent}, Previous) ->
 						"\n\nCurrent expression:\n~s\n\n", 
 						[csp_expression_printer:csp2string(Exp)]),
 					Answer = 
-						lists:nth(random:uniform(length(Questions)), Questions),
+						lists:nth(rand:uniform(length(Questions)), Questions),
 					io:format("\nForward evaluation. Randomly selected:\n~s\n", [csp_expression_printer:csp2string(Answer)]),
+					put(random_choice, true),
 					csp_process_option_processing(Exp, Answer, Parent),
+					put(random_choice, false),
 					% io:format("PASA1\n"),
 					{forward_reverse, N - 1}
 			end;
@@ -400,18 +383,18 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 		process_answer(Exp, Answer, Parent),
 	case Answer of 
 		[_|_] -> 
-			build_sync_edges(NNodes),
+			build_sync_edges([N || {N, _} <- NNodes]);
 			% io:format("~p\n", [lists:seq(1, length(NNodes) - 1)]),
-			[ begin
-				send_message2regprocess(
-					printer,
-					{unprint_last, get_self()}),
-				receive
-					unprinted_last ->
-						ok
-				end
-			 end
-			|| _ <- lists:seq(1, length(NNodes) - 1)];
+			% [ begin
+			% 	send_message2regprocess(
+			% 		printer,
+			% 		{unprint_last, get_self()}),
+			% 	receive
+			% 		unprinted_last ->
+			% 			ok
+			% 	end
+			%  end
+			% || _ <- lists:seq(1, length(NNodes) - 1)];
 		_ ->
 			ok
 	end,
@@ -419,10 +402,14 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 
 execute_csp_random({Exp, Parent}, Options, Steps) -> 
 	Answer = 
-		lists:nth(random:uniform(length(Options)), Options),
-	io:format("\nRandomly selected:\n~s\n", [csp_expression_printer:csp2string(Answer)]),
+		lists:nth(rand:uniform(length(Options)), Options),
+	io:format(
+		"\nRandomly selected:\n~s\n", 
+		[csp_expression_printer:csp2string(Answer)]),
+	put(random_choice, true),
 	NExp = 
 		csp_process_option_processing(Exp, Answer, Parent),
+	put(random_choice, false),
 	execute_csp(NExp, Steps - 1).
 
 build_sync_edges([H|T]) ->
@@ -634,62 +621,59 @@ get_questions({finished_skip, _, _}, Renamings) ->
 
 process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L = [_|_], Parent) ->
 	case lists:member(P, L) of 
-		true -> 
-			send_message2regprocess(
-				printer,
-				{print, Event, get_self()}),
+		true ->
+			case get(in_parallelism) of 
+				true -> 
+					ok;
+				_ -> 
+					print_event(Event) 
+			end,
 			send_message2regprocess(
 				printer,
 				{create_graph, P, Parent, get_self()}),
 			receive
-				{printed, Event} -> 
-					ok
-			end,
-			receive
 				{created, NParent} ->
 					{NExp, NNodes} = 
 						process_answer(ProcessPrefixing, P, NParent),
-					{NExp, [(NParent - 1)| NNodes]}
+					{NExp, [{(NParent - 1), Event}| NNodes]}
 			end;
 		false -> 
 			{{P, Parent}, []}
 	end;
 process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, Parent) ->
-	send_message2regprocess(
-		printer,
-		{print, Event, get_self()}),
+	case get(in_parallelism) of 
+		true -> 
+			ok;
+		_ -> 
+			print_event(Event) 
+	end,
 	send_message2regprocess(
 		printer,
 		{create_graph, P, Parent, get_self()}),
-	receive
-		{printed, Event} -> 
-			ok
-	end,
 	receive
 		{created, NParent} ->
 			{NExp, NNodes} = 
 				process_answer(ProcessPrefixing, P, NParent),
-			{NExp, [(NParent - 1) | NNodes]}
+			{NExp, [{(NParent - 1), Event} | NNodes]}
 	end;
 process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
 	Selected = 
-		ask_questions(
-			build_str_tuples([PA, PB]), 
-			fun process_answer_exe/3, 
-			[]),
+		case get(random_choice) of 
+			true -> 
+				lists:nth(rand:uniform(2), [PA, PB]);
+			_ ->
+				ask_questions(
+					build_str_tuples([PA, PB]), 
+					fun process_answer_exe/3, 
+					[])
+		end,
 	Event = 
 		list_to_atom("   tau -> Internal Choice. Branch: "
 			++ csp_expression_printer:csp2string(Selected)),
-	send_message2regprocess(
-		printer,
-		{print, Event, get_self()}),
+	print_event(Event),
 	send_message2regprocess(
 		printer,
 		{create_graph, P, Parent, get_self()}),
-	receive
-		{printed, Event} -> 
-			ok
-	end,
 	receive
 		{created, NParent} ->
 			{{Selected, NParent}, []}
@@ -705,16 +689,10 @@ process_answer(P = {agent_call, SPAN, ProcessName, Arguments}, P, Parent) ->
 		list_to_atom("   tau -> Call to process "
 			++ atom_to_list(ProcessName)
 			++ printer:string_arguments(Arguments)),
-	send_message2regprocess(
-		printer,
-		{print, Event, get_self()}),
+	print_event(Event),
 	send_message2regprocess(
 		printer,
 		{create_graph, P, Parent, get_self()}),
-	receive
-		{printed, Event} -> 
-			ok
-	end,
 	receive
 		{created, NParent} ->
 			{{NCode, NParent}, []}
@@ -728,38 +706,19 @@ process_answer(IL = {'|||', PA, PB, SPAN}, P, Parent) ->
 			{created, NParent0} ->
 				NParent0
 		end,
-	{{NPA, ParentA}, NNodesA} = 
-		process_answer(PA, P, NParent),
-	{{NPB, ParentB}, NNodesB} = 
-		process_answer(PB, P, NParent),
-	{
-		{{'|||', 
-			NPA, 
-			NPB, 
-			ParentA,
-			ParentB,
-			SPAN}, 
-		 NParent},
-		NNodesA ++ NNodesB
-	};
+	process_answer_interleaving(
+		{PA, NParent}, 
+		{PB, NParent}, 
+		P, 
+		NParent,
+		SPAN);
 process_answer({'|||', PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
-	{{NPA, NParentA}, NNodesA} = 
-		process_answer(PA, P, ParentA),
-	{{NPB, NParentB}, NNodesB} = 
-		process_answer(PB, P, ParentB),
-	NProcess = 
-		case {NPA, NPB} of 
-			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
-				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
-			_ -> 
-				{'|||', 
-					NPA, 
-					NPB, 
-					NParentA,
-					NParentB,
-					SPAN}
-		end,
-	{{NProcess, Parent}, NNodesA ++ NNodesB};
+	process_answer_interleaving(
+		{PA, ParentA}, 
+		{PB, ParentB}, 
+		P, 
+		Parent,
+		SPAN);
 process_answer(IL = {sharing, {closure, Events}, PA, PB, SPAN}, P, Parent) ->
 	send_message2regprocess(
 		printer,
@@ -769,40 +728,21 @@ process_answer(IL = {sharing, {closure, Events}, PA, PB, SPAN}, P, Parent) ->
 			{created, NParent0} ->
 				NParent0
 		end,
-	{{NPA, ParentA}, NNodesA} = 
-		process_answer(PA, P, NParent),
-	{{NPB, ParentB}, NNodesB} = 
-		process_answer(PB, P, NParent),
-	{
-		{{sharing, 
-			{closure, Events}, 
-			NPA, 
-			NPB,
-			ParentA,
-			ParentB,
-			SPAN},
-		NParent},
-		NNodesA ++ NNodesB
-	};
+	process_answer_sharing(
+		{PA, NParent}, 
+		{PB, NParent}, 
+		P, 
+		NParent,
+		SPAN,
+		Events);
 process_answer({sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, P, Parent) ->
-	{{NPA, NParentA}, NNodesA} = 
-		process_answer(PA, P, ParentA),
-	{{NPB, NParentB}, NNodesB} = 
-		process_answer(PB, P, ParentB),
-	NProcess = 
-		case {NPA, NPB} of 
-			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
-				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
-			_ -> 
-				{sharing, 
-					{closure, Events}, 
-					NPA, 
-					NPB,
-					NParentA,
-					NParentB,
-					SPAN}
-		end,
-	{{NProcess, Parent}, NNodesA ++ NNodesB};
+	process_answer_sharing(
+		{PA, ParentA}, 
+		{PB, ParentB}, 
+		P, 
+		Parent,
+		SPAN,
+		Events);
 % process_answer({procRenaming, ListRenamings, Proc, SPAN}, P) ->
 % 	{procRenaming, ListRenamings, process_answer(Proc, P), SPAN};
 process_answer({';', PA, PB, SPAN}, P, Parent) ->
@@ -826,16 +766,10 @@ process_answer({';', PA, PB, SPAN}, P, Parent) ->
 process_answer(P = {skip, SPAN}, _, Parent) ->
 	Event = 
 		'   tau (SKIP)',
-	send_message2regprocess(
-		printer, 
-		{print, Event, get_self()}),
+	print_event(Event),
 	send_message2regprocess(
 		printer,
 		{create_graph, P, Parent, get_self()}),
-	receive
-		{printed, Event} -> 
-			ok
-	end,
 	receive
 		{created, NParent} ->
 			{{{finished_skip, SPAN, [NParent]}, NParent}, []}
@@ -843,7 +777,81 @@ process_answer(P = {skip, SPAN}, _, Parent) ->
 process_answer(P, Ans, Parent) ->
 	{{P, Parent}, []}.
 
+process_answer_interleaving({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN) -> 
+	{{NPA, NParentA}, NNodesA} = 
+		process_answer(PA, P, ParentA),
+	{{NPB, NParentB}, NNodesB} =
+		case {not(is_list(P)), NPA /= PA} of 
+			{true, true} ->
+				{{PB, ParentB}, []};
+			_ ->   
+				process_answer(PB, P, ParentB)
+		end,
+	NProcess = 
+		case {NPA, NPB} of 
+			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
+				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
+			_ -> 
+				{'|||', 
+					NPA, 
+					NPB, 
+					NParentA,
+					NParentB,
+					SPAN}
+		end,
+	{
+		{NProcess, Parent}, 
+		NNodesA ++ NNodesB
+	}.
 
+process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) -> 
+	IsInParallel = 
+		get(in_parallelism),
+	put(in_parallelism, true),
+	{{NPA, NParentA}, NNodesA} = 
+		process_answer(PA, P, ParentA),
+	{{NPB, NParentB}, NNodesB} =
+		case {not(is_list(P)), NPA /= PA} of 
+			{true, true} ->
+				{{PB, ParentB}, []};
+			_ ->   
+				process_answer(PB, P, ParentB)
+		end,
+	put(in_parallelism, false),
+	case IsInParallel of 
+		true -> 
+			ok;
+		_ -> 
+			case {NPA /= PA, NPB /= PB} of 
+				{true, true} ->  
+					% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
+					% io:format("~p\n", [NNodesA ++ NNodesB]),
+					EventToPrint = 
+						element(2, hd(NNodesA ++ NNodesB)),
+					print_event(EventToPrint);
+				_ -> 
+					EventsToPrint = 
+						[E || {_,E} <- (NNodesA ++ NNodesB)],
+					[print_event(Event) || Event <- EventsToPrint]
+			end
+	end,
+	NProcess = 
+		case {NPA, NPB} of 
+			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
+				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
+			_ -> 
+				{sharing, 
+					{closure, Events}, 
+					NPA, 
+					NPB,
+					NParentA,
+					NParentB,
+					SPAN}
+		end,
+	{
+		{NProcess, Parent}, 
+		NNodesA ++ NNodesB
+	}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -926,16 +934,15 @@ execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
 process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, Parent, Track, Current) ->
 	case same_span(SPAN1, Track, Current) of 
 		true -> 
-			send_message2regprocess(
-				printer,
-				{print, Event, get_self()}),
+			case get(in_parallelism) of 
+				true -> 
+					print_event(Event);
+				_ -> 
+					ok
+			end,
 			send_message2regprocess(
 				printer,
 				{create_graph, P, Parent, get_self()}),
-			receive
-				{printed, Event} -> 
-					ok
-			end,
 			receive
 				{created, NParent} ->
 					{Nexp, NCurrent, NNodes} = 
@@ -969,16 +976,10 @@ process_answer_from_track(P = {'|~|', PA, PB, SPAN}, Parent, Track, Current) ->
 					Event = 
 						list_to_atom("   tau -> Internal Choice. Branch: "
 							++ csp_expression_printer:csp2string(Selected)),
-					send_message2regprocess(
-						printer,
-						{print, Event, get_self()}),
+					print_event(Event),
 					send_message2regprocess(
 						printer,
 						{create_graph, P, Parent, get_self()}),
-					receive
-						{printed, Event} -> 
-							ok
-					end,
 					receive
 						{created, NParent} ->
 							process_answer_from_track(
@@ -1004,16 +1005,10 @@ process_answer_from_track(P = {agent_call, SPAN, ProcessName, Arguments}, Parent
 				list_to_atom("   tau -> Call to process "
 					++ atom_to_list(ProcessName)
 					++ printer:string_arguments(Arguments)),
-			send_message2regprocess(
-				printer,
-				{print, Event, get_self()}),
+			print_event(Event),
 			send_message2regprocess(
 				printer,
 				{create_graph, P, Parent, get_self()}),
-			receive
-				{printed, Event} -> 
-					ok
-			end,
 			receive
 				{created, NParent} ->
 					process_answer_from_track(NCode, NParent, Track, Current + 1)
@@ -1032,42 +1027,24 @@ process_answer_from_track(IL = {'|||', PA, PB, SPAN}, Parent, Track, Current) ->
 					{created, NParent0} ->
 						NParent0
 				end,
-			{{NPA, ParentA}, CurrentA, NNodesA} =
-				process_answer_from_track(PA, NParent, Track, Current + 1), 
-			{{NPB, ParentB}, CurrentB, NNodesB} = 
-				process_answer_from_track(PB, NParent, Track, Current + 1),
-			{
-				{{'|||', 
-					NPA, 
-					NPB, 
-					ParentA,
-					ParentB,
-					SPAN}, 
-				 NParent},
-				max(CurrentA, CurrentB),
-				NNodesA ++ NNodesB
-			};
+			process_answer_from_track_interleaving(
+				{PA, NParent}, 
+				{PB, NParent}, 
+				Track, 
+				Current + 1,
+				NParent,
+				SPAN);
 		false -> 
 			{{IL, Parent}, Current, []}
 	end;
 process_answer_from_track(P = {'|||', PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Current) ->
-	{{NPA, NParentA}, CurrentA, NNodesA}  = 
-		process_answer_from_track(PA, ParentA, Track, Current), 
-	{{NPB, NParentB}, CurrentB, NNodesB} = 
-		process_answer_from_track(PB, ParentB, Track, Current), 
-	NProcess = 
-		case {NPA, NPB} of 
-			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
-				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
-			_ -> 
-				{'|||', 
-					NPA, 
-					NPB, 
-					NParentA,
-					NParentB,
-					SPAN}
-		end,
-	{{NProcess, Parent}, max(CurrentA, CurrentB), NNodesA ++ NNodesB};
+	process_answer_from_track_interleaving(
+		{PA, ParentA}, 
+		{PB, ParentB}, 
+		Track, 
+		Current,
+		Parent,
+		SPAN);
 process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, SPAN}, Parent, Track, Current) ->
 	case same_span(SPAN, Track, Current) of 
 		true -> 
@@ -1079,97 +1056,26 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, SPAN}, Paren
 					{created, NParent0} ->
 						NParent0
 				end,
-			{{NPA, ParentA}, CurrentA, NNodesA} =
-				process_answer_from_track(PA, NParent, Track, Current + 1), 
-			{{NPB, ParentB}, CurrentB, NNodesB} = 
-				process_answer_from_track(PB, NParent, Track, Current + 1),
-			% io:format("NNodesA_0: ~w, NNodesB_0 ~w\n", [NNodesA, NNodesB]),
-			{
-				{{sharing, 
-					{closure, Events},
-					NPA, 
-					NPB, 
-					ParentA,
-					ParentB,
-					SPAN}, 
-				 NParent},
-				max(CurrentA, CurrentB),
-				NNodesA ++ NNodesB
-			};
+			process_answer_from_track_sharing(
+				{PA, NParent}, 
+				{PB, NParent}, 
+				Track, 
+				Current + 1,
+				NParent,
+				SPAN,
+				Events);
 		false -> 
 			{{IL, Parent}, Current, []}
 	end;
 process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Current) ->
-	{{NPA, NParentA}, CurrentA, NNodesA}  = 
-		process_answer_from_track(PA, ParentA, Track, Current), 
-	SyncEventsFun = 
-		fun(Nodes) -> 
-			lists:usort(
-				[begin 
-					% io:format("~p\n", [lists:sort(digraph:vertices(Track))]),
-					% io:format("~p\n", [digraph:vertex(Track, N)]),
-					case digraph:vertex(Track, OldN) of 
-						{OldN, {NodeTerm,_}} ->  
-							case lists:member(list_to_atom(NodeTerm), Events) of 
-								true -> 
-									NewN;
-								false -> 
-									none 
-							end;
-						% TODO: Should not be happening
-						false -> 
-							io:format("******It's happened.\n"),
-							none 
-					end
-				end 
-				|| {OldN, NewN} <- Nodes])
-		end,
-	SyncEventsA = 
-		[E || E <- SyncEventsFun(NNodesA), E /= none],
-	CurrentB0 =
-		case SyncEventsA of 
-			[] -> 
-				Current;
-			_ -> 
-				CurrentA
-		end,
-	{{NPB, NParentB}, CurrentB, NNodesB} = 
-		% process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, SyncEventsA /= []), 
-		process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false), 
-	SyncEventsB = 
-		[E || E <- SyncEventsFun(NNodesB), E /= none],
-	build_sync_edges(SyncEventsA ++ SyncEventsB),
-	case length(SyncEventsA ++ SyncEventsB) > 0 of 
-		true -> 
-			[ begin
-				send_message2regprocess(
-					printer,
-					{unprint_last_from, Events, get_self()}),
-				receive
-					unprinted_last ->
-						ok
-				end
-			 end
-			|| _ <- lists:seq(1, length(SyncEventsA ++ SyncEventsB) - 1)];
-		false -> 
-			ok
-	end,
-	% io:format("SyncEventsA: ~p\n", [SyncEventsA]),
-	% io:format("NNodesA: ~w, NNodesB ~w, Current: ~p\n", [NNodesA, NNodesB, max(CurrentA, CurrentB)]),
-	NProcess = 
-		case {NPA, NPB} of 
-			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
-				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
-			_ -> 
-				{sharing,
-					{closure, Events}, 
-					NPA, 
-					NPB, 
-					NParentA,
-					NParentB,
-					SPAN}
-		end,
-	{{NProcess, Parent}, max(CurrentA, CurrentB), NNodesA ++ NNodesB};
+	process_answer_from_track_sharing(
+		{PA, ParentA}, 
+		{PB, ParentB}, 
+		Track, 
+		Current,
+		Parent,
+		SPAN,
+		Events);
 process_answer_from_track(P = {';', PA, PB, SPAN}, Parent, Track, Current) ->
 	{{NPA, NParentA}, NCurrent, NNodesA}  = 
 		process_answer_from_track(PA, Parent, Track, Current), 
@@ -1193,16 +1099,10 @@ process_answer_from_track(P = {skip, SPAN}, Parent, Track, Current) ->
 		true ->
 			Event = 
 				'   tau (SKIP)',
-			send_message2regprocess(
-				printer, 
-				{print, Event, get_self()}),
+			print_event(Event),
 			send_message2regprocess(
 				printer,
 				{create_graph, P, Parent, get_self()}),
-			receive
-				{printed, Event} -> 
-					ok
-			end,
 			receive
 				{created, NParent} ->
 					{{{finished_skip, SPAN, [NParent]}, NParent}, Current + 1, []}
@@ -1213,6 +1113,151 @@ process_answer_from_track(P = {skip, SPAN}, Parent, Track, Current) ->
 process_answer_from_track(P = {finished_skip, _, _}, Parent, _, Current) ->
 	{{P, Parent}, Current, []}.
 
+process_answer_from_track_interleaving(
+		{PA, ParentA}, 
+		{PB, ParentB}, 
+		Track, Current, 
+		Parent,
+		SPAN
+	) -> 
+	{{NPA, NParentA}, CurrentA, NNodesA}  = 
+		process_answer_from_track(PA, ParentA, Track, Current), 
+	{{NPB, NParentB}, CurrentB, NNodesB} = 
+		process_answer_from_track(PB, ParentB, Track, Current), 
+	NProcess = 
+		case {NPA, NPB} of 
+			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
+				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
+			_ -> 
+				{'|||', 
+					NPA, 
+					NPB, 
+					NParentA,
+					NParentB,
+					SPAN}
+		end,
+	{
+		{NProcess, Parent}, 
+		max(CurrentA, CurrentB), 
+		NNodesA ++ NNodesB
+	}.
+
+process_answer_from_track_sharing(
+		{PA, ParentA}, 
+		{PB, ParentB}, 
+		Track, 
+		Current, 
+		Parent, 
+		SPAN, 
+		Events
+	) ->
+	IsInParallel = 
+		get(in_parallelism),
+	put(in_parallelism, true),
+	{{NPA, NParentA}, CurrentA, NNodesA}  = 
+		process_answer_from_track(PA, ParentA, Track, Current), 
+	SyncEventsFun = 
+		fun(Nodes) -> 
+			lists:usort(
+				[begin 
+					% io:format("~p\n", [lists:sort(digraph:vertices(Track))]),
+					% io:format("~p\n", [digraph:vertex(Track, N)]),
+					case digraph:vertex(Track, OldN) of 
+						{OldN, {NodeTerm,_}} ->  
+							case lists:member(list_to_atom(NodeTerm), Events) of 
+								true -> 
+									NewN;
+								false -> 
+									none 
+							end%;
+						% % TODO: Should not be happening
+						% false -> 
+						% 	io:format("******It's happening.\n"),
+						% 	none 
+					end
+				end 
+				|| {OldN, NewN} <- Nodes])
+		end,
+	EventsFun = 
+		fun(Nodes) -> 
+			lists:usort(
+				[begin 
+					% io:format("~p\n", [lists:sort(digraph:vertices(Track))]),
+					% io:format("~p\n", [digraph:vertex(Track, N)]),
+					case digraph:vertex(Track, OldN) of 
+						{OldN, {NodeTerm,_}} ->  
+							NodeTerm
+						% % TODO: Should not be happening
+						% false -> 
+						% 	io:format("******It's happening.\n"),
+						% 	none 
+					end
+				end 
+				|| {OldN, NewN} <- Nodes])
+		end,
+	SyncEventsA = 
+		[E || E <- SyncEventsFun(NNodesA), E /= none],
+	CurrentB0 =
+		case SyncEventsA of 
+			[] -> 
+				Current;
+			_ -> 
+				CurrentA
+		end,
+	{{NPB, NParentB}, CurrentB, NNodesB} = 
+		% process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, SyncEventsA /= []), 
+		process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false), 
+	put(in_parallelism, false),
+	SyncEventsB = 
+		[E || E <- SyncEventsFun(NNodesB), E /= none],
+	build_sync_edges(SyncEventsA ++ SyncEventsB),
+	case IsInParallel of 
+		true -> 
+			ok;
+		_ -> 
+			case length(SyncEventsA ++ SyncEventsB) > 0 of 
+				true -> 
+					% io:format("~w\n", [SyncEventsA ++ SyncEventsB]),
+					EventToPrint = 
+						hd(EventsFun(
+							[hd(NNodesA ++ NNodesB)])),
+					print_event(EventToPrint);
+				false -> 
+					EventsToPrint = 
+						EventsFun(NNodesA) ++ EventsFun(NNodesB),
+					[print_event(Event) || Event <- EventsToPrint]
+			end
+			% [ begin
+			% 	send_message2regprocess(
+			% 		printer,
+			% 		{unprint_last_from, Events, get_self()}),
+			% 	receive
+			% 		unprinted_last ->
+			% 			ok
+			% 	end
+			%  end
+			% || _ <- lists:seq(1, length(SyncEventsA ++ SyncEventsB) - 1)];
+	end,
+	% io:format("SyncEventsA: ~p\n", [SyncEventsA]),
+	% io:format("NNodesA: ~w, NNodesB ~w, Current: ~p\n", [NNodesA, NNodesB, max(CurrentA, CurrentB)]),
+	NProcess = 
+		case {NPA, NPB} of 
+			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
+				{finished_skip, SPAN, NodesSkipA ++ NodesSkipB};
+			_ -> 
+				{sharing,
+					{closure, Events}, 
+					NPA, 
+					NPB, 
+					NParentA,
+					NParentB,
+					SPAN}
+		end,
+	{
+		{NProcess, Parent}, 
+		max(CurrentA, CurrentB), 
+		NNodesA ++ NNodesB
+	}.
 
 process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false) -> 
 	process_answer_from_track(PB, ParentB, Track, CurrentB0);
@@ -1336,6 +1381,30 @@ remove_from_track(N, Track) ->
 %   Other functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+print_event(Event0) -> 
+	Event = 
+		case is_list(Event0) of 
+			true -> 
+				list_to_atom(Event0);
+			false -> 
+				Event0
+		end,
+	send_message2regprocess(
+		printer,
+		{print, Event, get_self()}),
+	receive
+		{printed, Event} -> 
+			ok
+	end.
+
+decide_eval_order() -> 
+	case rand:uniform(2) of 
+		1 -> 
+			reverse;
+		2 -> 
+			forward
+	end.
 
 format(Format, Data) ->
     lists:flatten(io_lib:format(Format, Data)).

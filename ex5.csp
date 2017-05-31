@@ -1,0 +1,9 @@
+channel a, b
+
+MAIN = R
+
+R = (P [|{|a|}|]  Q)
+
+P = a -> b -> P
+
+Q = b -> a -> R
