@@ -254,8 +254,10 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 			","),
 	csp_process_interactive:remove_from_track(H, NG),
 	% io:format("H: ~w\n", [H]),
+	% csp_tracker:print_from_digraph(NG, "current" ++ integer_to_list(length([H | T])), [], false),
 	Result = {_, ResExp} = 
 		start_from_track(FirstProcess, NG),
+	% io:format("ResExp: ~p\n", [ResExp]),
 	Printed = 
 			NodeStr ++ "\n\t\\__ "  
 		++ 	csp_expression_printer:csp2string(ResExp),
@@ -911,7 +913,7 @@ start_from_track(FirstProcess, Track) ->
 				{{{{0, 0, 0, 0}, 0, []}, {[], []}}, FirstExp}
 		end,
 	digraph:delete(Track),
-	send_message2regprocess(printer,{stop, self()}),
+	send_message2regprocess(printer, {stop, self()}),
 	receive 
 		stopped -> 
 			ok
@@ -920,8 +922,10 @@ start_from_track(FirstProcess, Track) ->
 
 execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
 	% io:format("Current: ~p\n", [Current]),
+	% io:format("\n++++++\nExp: ~s\n++++++\n", [csp_expression_printer:csp2string(Exp)]),
 	{NExpParent = {NExp,_}, NCurrent, NNodes} = 
 		process_answer_from_track(Exp, Parent, Track, Current),
+	% io:format("\n++++++\nNExp: ~s\n++++++\n", [csp_expression_printer:csp2string(NExp)]),
 	case NCurrent of 
 		Top ->
 			{NExp, NNodes};
@@ -1151,6 +1155,7 @@ process_answer_from_track_sharing(
 		SPAN, 
 		Events
 	) ->
+	% io:format("~p\n~p\n*****************\n", [SPAN, {{PA, ParentA}, {PB, ParentB}, Current}]),
 	IsInParallel = 
 		get(in_parallelism),
 	put(in_parallelism, true),
@@ -1198,23 +1203,32 @@ process_answer_from_track_sharing(
 	SyncEventsA = 
 		[E || E <- SyncEventsFun(NNodesA), E /= none],
 	CurrentB0 =
-		case SyncEventsA of 
-			[] -> 
+		case {SyncEventsA, NNodesA} of 
+			{[], []} -> 
 				Current;
-			_ -> 
+			{[], _} -> 
+				CurrentA;
+			{_, _} -> 
 				CurrentA
 		end,
+	% CurrentB0 =
+	% 	case SyncEventsA of 
+	% 		[] -> 
+	% 			Current;
+	% 		_ -> 
+	% 			CurrentA
+	% 	end,
 	{{NPB, NParentB}, CurrentB, NNodesB} = 
 		% process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, SyncEventsA /= []), 
 		process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false), 
 	put(in_parallelism, false),
 	SyncEventsB = 
 		[E || E <- SyncEventsFun(NNodesB), E /= none],
-	build_sync_edges(SyncEventsA ++ SyncEventsB),
 	case IsInParallel of 
 		true -> 
 			ok;
 		_ -> 
+			build_sync_edges(SyncEventsA ++ SyncEventsB),
 			case length(SyncEventsA ++ SyncEventsB) > 0 of 
 				true -> 
 					% io:format("~w\n", [SyncEventsA ++ SyncEventsB]),

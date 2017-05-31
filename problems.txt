@@ -1,0 +1,12 @@
+Current expression:
+(a -> b -> P [|{|a|}|] (a -> b -> P [|{|a|}|] R))
+
+These are the available options: 
+1 .- P from (7,15) to (7,16)
+	\__ (a -> b -> P [|{|a|}|] (a -> b -> P [|{|a|}|] R))
+2 .- P from (7,15) to (7,16)
+	\__ (a -> b -> P [|{|a|}|] (a -> b -> P [|{|a|}|] R))
+
+- Double sync edge 
+
+- Repeated events in reverse trace
