@@ -1,8 +1,5 @@
-- Repeated events in reverse trace
 - go back to certain element of the trace -> simply left as it is
-- allow the internal choice as option in reverse evaluation
+- Optional: allow the internal choice as option in reverse evaluation. 
 - Undo
 - Padding for options when there is more than 10 options
-- Fix problem with ETS tables
 - breakpoints: We want 3 types (forth, back, both) or only one?
-- disable stops for internal choices when running randomly.
