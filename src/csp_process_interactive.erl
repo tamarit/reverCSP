@@ -940,23 +940,23 @@ process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing,
 		true -> 
 			case get(in_parallelism) of 
 				true -> 
-					print_event(Event);
+					ok;
 				_ -> 
-					ok
+					print_event(Event)
 			end,
 			send_message2regprocess(
 				printer,
 				{create_graph, P, Parent, get_self()}),
 			receive
 				{created, NParent} ->
-					{Nexp, NCurrent, NNodes} = 
-						process_answer_from_track(
-							ProcessPrefixing, 
-							NParent, 
-							Track, 
-							Current + 2),
-					% io:format("Add ~w to NNodes for event ~p (~p)\n", [[(NParent - 1) | NNodes], Event, SPAN1]),
-					{Nexp, NCurrent, [{Current, (NParent - 1)} | NNodes]}
+					% {Nexp, NCurrent, NNodes} = 
+					% 	process_answer_from_track(
+					% 		ProcessPrefixing, 
+					% 		NParent, 
+					% 		Track, 
+					% 		Current + 2),
+					% {Nexp, NCurrent, NNodes ++ [{Current, (NParent - 1), Event}]}
+					{{ProcessPrefixing, NParent}, Current + 2, [{Current, (NParent - 1), Event}]}
 			end;
 		false ->
 			{{P, Parent}, Current, []}
@@ -980,17 +980,25 @@ process_answer_from_track(P = {'|~|', PA, PB, SPAN}, Parent, Track, Current) ->
 					Event = 
 						list_to_atom("   tau -> Internal Choice. Branch: "
 							++ csp_expression_printer:csp2string(Selected)),
-					print_event(Event),
+					case get(in_parallelism) of 
+						true -> 
+							ok;
+						_ -> 
+							print_event(Event)
+					end,
 					send_message2regprocess(
 						printer,
 						{create_graph, P, Parent, get_self()}),
 					receive
 						{created, NParent} ->
-							process_answer_from_track(
-								Selected, 
-								NParent, 
-								Track, 
-								Current + 1)
+							% {Nexp, NCurrent, NNodes} = 	
+							% 	process_answer_from_track(
+							% 		Selected, 
+							% 		NParent, 
+							% 		Track, 
+							% 		Current + 1),
+							% {Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}]}
+							{{Selected, NParent}, Current + 1, [{Current, NParent, Event}]}
 					end
 			end;
 		false ->
@@ -1009,13 +1017,25 @@ process_answer_from_track(P = {agent_call, SPAN, ProcessName, Arguments}, Parent
 				list_to_atom("   tau -> Call to process "
 					++ atom_to_list(ProcessName)
 					++ printer:string_arguments(Arguments)),
-			print_event(Event),
+			case get(in_parallelism) of 
+				true -> 
+					ok;
+				_ -> 
+					print_event(Event)
+			end,
 			send_message2regprocess(
 				printer,
 				{create_graph, P, Parent, get_self()}),
 			receive
 				{created, NParent} ->
-					process_answer_from_track(NCode, NParent, Track, Current + 1)
+					% {Nexp, NCurrent, NNodes} = 
+					% 	process_answer_from_track(
+					% 		NCode, 
+					% 		NParent, 
+					% 		Track, 
+					% 		Current + 1),
+					% {Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}] }
+					{{NCode, NParent}, Current + 1, [{Current, NParent, Event}] }
 			end;
 		false -> 
 			{{P, Parent}, Current, []}
@@ -1103,13 +1123,18 @@ process_answer_from_track(P = {skip, SPAN}, Parent, Track, Current) ->
 		true ->
 			Event = 
 				'   tau (SKIP)',
-			print_event(Event),
+			case get(in_parallelism) of 
+				true -> 
+					ok;
+				_ -> 
+					print_event(Event)
+			end,
 			send_message2regprocess(
 				printer,
 				{create_graph, P, Parent, get_self()}),
 			receive
 				{created, NParent} ->
-					{{{finished_skip, SPAN, [NParent]}, NParent}, Current + 1, []}
+					{{{finished_skip, SPAN, [NParent]}, NParent}, Current + 1, [{Current, NParent, Event}]}
 			end;
 		false ->
 			{{P, Parent}, Current, []}
@@ -1163,45 +1188,14 @@ process_answer_from_track_sharing(
 		process_answer_from_track(PA, ParentA, Track, Current), 
 	SyncEventsFun = 
 		fun(Nodes) -> 
-			lists:usort(
-				[begin 
-					% io:format("~p\n", [lists:sort(digraph:vertices(Track))]),
-					% io:format("~p\n", [digraph:vertex(Track, N)]),
-					case digraph:vertex(Track, OldN) of 
-						{OldN, {NodeTerm,_}} ->  
-							case lists:member(list_to_atom(NodeTerm), Events) of 
-								true -> 
-									NewN;
-								false -> 
-									none 
-							end%;
-						% % TODO: Should not be happening
-						% false -> 
-						% 	io:format("******It's happening.\n"),
-						% 	none 
-					end
-				end 
-				|| {OldN, NewN} <- Nodes])
+			[NewN || {OldN, NewN, Event} <- Nodes, lists:member(Event, Events)]
 		end,
 	EventsFun = 
 		fun(Nodes) -> 
-			lists:usort(
-				[begin 
-					% io:format("~p\n", [lists:sort(digraph:vertices(Track))]),
-					% io:format("~p\n", [digraph:vertex(Track, N)]),
-					case digraph:vertex(Track, OldN) of 
-						{OldN, {NodeTerm,_}} ->  
-							NodeTerm
-						% % TODO: Should not be happening
-						% false -> 
-						% 	io:format("******It's happening.\n"),
-						% 	none 
-					end
-				end 
-				|| {OldN, NewN} <- Nodes])
+			[Event|| {OldN, NewN, Event} <- Nodes]
 		end,
 	SyncEventsA = 
-		[E || E <- SyncEventsFun(NNodesA), E /= none],
+		SyncEventsFun(NNodesA),
 	CurrentB0 =
 		case {SyncEventsA, NNodesA} of 
 			{[], []} -> 
@@ -1211,19 +1205,11 @@ process_answer_from_track_sharing(
 			{_, _} -> 
 				CurrentA
 		end,
-	% CurrentB0 =
-	% 	case SyncEventsA of 
-	% 		[] -> 
-	% 			Current;
-	% 		_ -> 
-	% 			CurrentA
-	% 	end,
 	{{NPB, NParentB}, CurrentB, NNodesB} = 
-		% process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, SyncEventsA /= []), 
-		process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false), 
+		process_answer_from_track(PB, ParentB, Track, CurrentB0), 
 	put(in_parallelism, false),
 	SyncEventsB = 
-		[E || E <- SyncEventsFun(NNodesB), E /= none],
+		SyncEventsFun(NNodesB),
 	case IsInParallel of 
 		true -> 
 			ok;
@@ -1239,18 +1225,10 @@ process_answer_from_track_sharing(
 				false -> 
 					EventsToPrint = 
 						EventsFun(NNodesA) ++ EventsFun(NNodesB),
+					io:format("~w\n", [NNodesA ++ NNodesB]),
+					io:format("~p\n", [EventsToPrint]),
 					[print_event(Event) || Event <- EventsToPrint]
 			end
-			% [ begin
-			% 	send_message2regprocess(
-			% 		printer,
-			% 		{unprint_last_from, Events, get_self()}),
-			% 	receive
-			% 		unprinted_last ->
-			% 			ok
-			% 	end
-			%  end
-			% || _ <- lists:seq(1, length(SyncEventsA ++ SyncEventsB) - 1)];
 	end,
 	% io:format("SyncEventsA: ~p\n", [SyncEventsA]),
 	% io:format("NNodesA: ~w, NNodesB ~w, Current: ~p\n", [NNodesA, NNodesB, max(CurrentA, CurrentB)]),
@@ -1272,18 +1250,6 @@ process_answer_from_track_sharing(
 		max(CurrentA, CurrentB), 
 		NNodesA ++ NNodesB
 	}.
-
-process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, false) -> 
-	process_answer_from_track(PB, ParentB, Track, CurrentB0);
-process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0, true) -> 
-	case process_answer_from_track(PB, ParentB, Track, CurrentB0) of 
-		{_, _, []} ->  
-			% io:format("Not found sync\n"),
-			process_answer_from_track_till_sync(PB, ParentB, Track, CurrentB0 + 1, true);
-		Other -> 
-			% io:format("Found sync\n"),
-			Other
-	end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
