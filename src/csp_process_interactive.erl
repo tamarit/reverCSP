@@ -925,6 +925,7 @@ execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
 	% io:format("\n++++++\nExp: ~s\n++++++\n", [csp_expression_printer:csp2string(Exp)]),
 	{NExpParent = {NExp,_}, NCurrent, NNodes} = 
 		process_answer_from_track(Exp, Parent, Track, Current),
+	% io:format("NCurrent: ~p\n", [NCurrent]),
 	% io:format("\n++++++\nNExp: ~s\n++++++\n", [csp_expression_printer:csp2string(NExp)]),
 	case NCurrent of 
 		Top ->
@@ -936,8 +937,10 @@ execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
 	end.
 
 process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, Parent, Track, Current) ->
-	case same_span(SPAN1, Track, Current) of 
+	% io:format("Entra: ~p\n", [{Current, P}]),
+	case (same_span(SPAN1, Track, Current) or same_span(SPAN, Track, Current)) of 
 		true -> 
+			% io:format("The span are the same: ~p\n", [{Current, P}]),
 			case get(in_parallelism) of 
 				true -> 
 					ok;
@@ -956,9 +959,17 @@ process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing,
 					% 		Track, 
 					% 		Current + 2),
 					% {Nexp, NCurrent, NNodes ++ [{Current, (NParent - 1), Event}]}
-					{{ProcessPrefixing, NParent}, Current + 2, [{Current, (NParent - 1), Event}]}
+					{NCurrent, CurrentNode} = 
+						case same_span(SPAN1, Track, Current) of 
+							true -> 
+								{Current + 2, Current};
+							false -> 
+								{Current + 1, Current - 1}
+						end,
+					{{ProcessPrefixing, NParent}, NCurrent, [{CurrentNode, (NParent - 1), Event}]}
 			end;
 		false ->
+			% io:format("The span are not the same: ~p\n", [{Current, P}]),
 			{{P, Parent}, Current, []}
 	end;
 process_answer_from_track(P = {'|~|', PA, PB, SPAN}, Parent, Track, Current) ->
@@ -1180,56 +1191,93 @@ process_answer_from_track_sharing(
 		SPAN, 
 		Events
 	) ->
+	% io:format("Current: ~w\n", [Current]),
 	% io:format("~p\n~p\n*****************\n", [SPAN, {{PA, ParentA}, {PB, ParentB}, Current}]),
 	IsInParallel = 
 		get(in_parallelism),
 	put(in_parallelism, true),
-	{{NPA, NParentA}, CurrentA, NNodesA}  = 
+	% io:format("{Current, PA}: ~w\n", [{Current, PA}]),
+	{{NPA0, NParentA0}, CurrentA0, NNodesA0}  = 
 		process_answer_from_track(PA, ParentA, Track, Current), 
 	SyncEventsFun = 
 		fun(Nodes) -> 
-			[NewN || {OldN, NewN, Event} <- Nodes, lists:member(Event, Events)]
+			lists:flatten(
+					[NewN || {OldN, NewN, Event} <- Nodes, lists:member(Event, Events)] 
+				++ 	[Nodes || {sync, Event, Nodes} <- Nodes, lists:member(Event, Events)]) 
 		end,
+	% NotSyncEventsFun = 
+	% 	fun(Nodes) -> 
+	% 		lists:flatten(
+	% 				[NewN || {OldN, NewN, Event} <- Nodes, not(lists:member(Event, Events))] 
+	% 			++ 	[Nodes || {sync, Event, Nodes} <- Nodes, not(lists:member(Event, Events))]) 
+	% 	end,
 	EventsFun = 
 		fun(Nodes) -> 
-			[Event|| {OldN, NewN, Event} <- Nodes]
+			[ Event || {OldN, NewN, Event} <- Nodes] ++ [Event || {sync, Event, Nodes} <- Nodes]
 		end,
-	SyncEventsA = 
-		SyncEventsFun(NNodesA),
+	SyncEventsA0 = 
+		SyncEventsFun(NNodesA0),
 	CurrentB0 =
-		case {SyncEventsA, NNodesA} of 
-			{[], []} -> 
+		case SyncEventsA0 of 
+			[] -> 
 				Current;
-			{[], _} -> 
-				CurrentA;
-			{_, _} -> 
-				CurrentA
+			_ -> 
+				CurrentA0
 		end,
 	{{NPB, NParentB}, CurrentB, NNodesB} = 
 		process_answer_from_track(PB, ParentB, Track, CurrentB0), 
-	put(in_parallelism, false),
 	SyncEventsB = 
 		SyncEventsFun(NNodesB),
-	case IsInParallel of 
-		true -> 
-			ok;
-		_ -> 
-			build_sync_edges(SyncEventsA ++ SyncEventsB),
-			case length(SyncEventsA ++ SyncEventsB) > 0 of 
-				true -> 
-					% io:format("~w\n", [SyncEventsA ++ SyncEventsB]),
-					EventToPrint = 
-						hd(EventsFun(
-							[hd(NNodesA ++ NNodesB)])),
-					print_event(EventToPrint);
-				false -> 
-					EventsToPrint = 
-						EventsFun(NNodesA) ++ EventsFun(NNodesB),
-					io:format("~w\n", [NNodesA ++ NNodesB]),
-					io:format("~p\n", [EventsToPrint]),
-					[print_event(Event) || Event <- EventsToPrint]
-			end
-	end,
+	{{NPA, NParentA}, CurrentA, NNodesA}  = 
+		case {SyncEventsA0, SyncEventsB} of 
+			{[], [_|_]} -> 
+				% io:format("SECOND TRY: {Current, PA}: ~w\n", [{CurrentB, PA}]),
+				process_answer_from_track(PA, ParentA, Track, CurrentB);
+			_ -> 
+				{{NPA0, NParentA0}, CurrentA0, NNodesA0}
+		end,
+	SyncEventsA = 
+		SyncEventsFun(NNodesA),
+	put(in_parallelism, false),
+	% io:format("Current: ~w\n", [Current]),
+	% io:format("NNodesA: ~w\n", [NNodesA]),
+	% io:format("SyncEventsA: ~w\n", [SyncEventsA]),
+	% io:format("CurrentA: ~w\n", [CurrentA]),
+	% io:format("NNodesB: ~w\n", [NNodesB]),
+	% io:format("SyncEventsB: ~w\n", [SyncEventsB]),
+	NNodes = 
+		case IsInParallel of 
+			true -> 
+				case length(SyncEventsA ++ SyncEventsB) > 0 of 
+					true ->
+						Event =  
+							hd(EventsFun(
+								[hd(NNodesA ++ NNodesB)])),
+						[{sync, Event, SyncEventsA ++ SyncEventsB}];
+					false -> 
+						NNodesA ++ NNodesB
+				end;
+				% NNodesA ++ NNodesB;
+			_ -> 
+				build_sync_edges(SyncEventsA ++ SyncEventsB),
+				case length(SyncEventsA ++ SyncEventsB) > 0 of 
+					true -> 
+						% io:format("~w\n", [SyncEventsA ++ SyncEventsB]),
+						EventToPrint = 
+							hd(EventsFun(
+								[hd(NNodesA ++ NNodesB)])),
+						print_event(EventToPrint),
+						[{sync, EventToPrint, SyncEventsA ++ SyncEventsB}];
+					false -> 
+						EventsToPrint = 
+							EventsFun(NNodesA) ++ EventsFun(NNodesB),
+						% io:format("~w\n", [NNodesA ++ NNodesB]),
+						% io:format("~p\n", [EventsToPrint]),
+						[print_event(Event) || Event <- EventsToPrint],
+						NNodesA ++ NNodesB
+				end
+				% NNodesA ++ NNodesB
+		end,
 	% io:format("SyncEventsA: ~p\n", [SyncEventsA]),
 	% io:format("NNodesA: ~w, NNodesB ~w, Current: ~p\n", [NNodesA, NNodesB, max(CurrentA, CurrentB)]),
 	NProcess = 
@@ -1248,7 +1296,7 @@ process_answer_from_track_sharing(
 	{
 		{NProcess, Parent}, 
 		max(CurrentA, CurrentB), 
-		NNodesA ++ NNodesB
+		NNodes
 	}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1436,6 +1484,7 @@ same_span(SPAN, Track, Current) ->
 		SPANTrack =:= SPAN
 	catch 
 		_:_ ->
+			% io:format("ERROR: NOT FOUND\n"),
 			false
 	end.
 	
