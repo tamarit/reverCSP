@@ -923,6 +923,7 @@ start_from_track(FirstProcess, Track) ->
 execute_csp_from_track({Exp, Parent}, Track, Current, Top) ->
 	% io:format("Current: ~p\n", [Current]),
 	% io:format("\n++++++\nExp: ~s\n++++++\n", [csp_expression_printer:csp2string(Exp)]),
+	put(top, Top),
 	{NExpParent = {NExp,_}, NCurrent, NNodes} = 
 		process_answer_from_track(Exp, Parent, Track, Current),
 	% io:format("NCurrent: ~p\n", [NCurrent]),
@@ -1218,21 +1219,32 @@ process_answer_from_track_sharing(
 	SyncEventsA0 = 
 		SyncEventsFun(NNodesA0),
 	CurrentB0 =
-		case SyncEventsA0 of 
-			[] -> 
-				Current;
-			_ -> 
-				CurrentA0
-		end,
+		CurrentA0,
+		% case SyncEventsA0 of 
+		% 	[] -> 
+		% 		Current;
+		% 	_ -> 
+		% 		CurrentA0
+		% end,
 	{{NPB, NParentB}, CurrentB, NNodesB} = 
-		process_answer_from_track(PB, ParentB, Track, CurrentB0), 
+		case (CurrentB0 >= get(top)) of 
+			true -> 
+				{{PB, ParentB}, CurrentB0, []};
+			false -> 
+				process_answer_from_track(PB, ParentB, Track, CurrentB0)
+		end, 
 	SyncEventsB = 
 		SyncEventsFun(NNodesB),
 	{{NPA, NParentA}, CurrentA, NNodesA}  = 
 		case {SyncEventsA0, SyncEventsB} of 
 			{[], [_|_]} -> 
 				% io:format("SECOND TRY: {Current, PA}: ~w\n", [{CurrentB, PA}]),
-				process_answer_from_track(PA, ParentA, Track, CurrentB);
+				case (CurrentB >= get(top)) of
+					true -> 
+						{{NPA0, NParentA0}, CurrentA0, NNodesA0};
+					false -> 
+						process_answer_from_track(PA, ParentA, Track, CurrentB)
+				end;
 			_ -> 
 				{{NPA0, NParentA0}, CurrentA0, NNodesA0}
 		end,
@@ -1245,6 +1257,7 @@ process_answer_from_track_sharing(
 	% io:format("CurrentA: ~w\n", [CurrentA]),
 	% io:format("NNodesB: ~w\n", [NNodesB]),
 	% io:format("SyncEventsB: ~w\n", [SyncEventsB]),
+	% io:format("CurrentB: ~w\n", [CurrentB]),
 	NNodes = 
 		case IsInParallel of 
 			true -> 
