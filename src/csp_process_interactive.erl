@@ -98,10 +98,12 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 			csp_tracker:print_from_digraph(Digraph, "current", [], false)
 		end,
 	% csp_tracker:print_from_digraph(Digraph, "current2", [], false),
+	% process_answer_reverse(t, fun() -> ok end, {Trace,0}),
 	% csp_tracker:print_from_digraph(Digraph, "track_from_track", [], false),
 	% io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[Trace]),
 	ReverseOptions = 
 		reverse_options(Digraph),
+	% error("algo\n"),
 	% io:format("Reverse options: ~w\n", [ReverseOptions]),
 	% io:get_line(standard_io, "PRESS INTRO TO CONTINUE..."),
 	case Previous of 
@@ -639,7 +641,7 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L =
 				{created, NParent} ->
 					{NExp, NNodes} = 
 						process_answer(ProcessPrefixing, P, NParent),
-					{NExp, [{(NParent - 1), Event}| NNodes]}
+					{NExp, NNodes ++ [{(NParent - 1), Event}]}
 			end;
 		false -> 
 			{{P, Parent}, []}
@@ -658,7 +660,7 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, 
 		{created, NParent} ->
 			{NExp, NNodes} = 
 				process_answer(ProcessPrefixing, P, NParent),
-			{NExp, [{(NParent - 1), Event} | NNodes]}
+			{NExp, NNodes ++ [{(NParent - 1), Event}] }
 	end;
 process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
 	Selected = 
@@ -840,7 +842,7 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 					print_event(EventToPrint);
 				_ -> 
 					EventsToPrint = 
-						[E || {_,E} <- (NNodesA ++ NNodesB)],
+						[E || {_,E} <- lists:sort(NNodesA ++ NNodesB)],
 					[print_event(Event) || Event <- EventsToPrint]
 			end;
 		_ -> 
@@ -1238,23 +1240,30 @@ process_answer_from_track_sharing(
 	SyncEventsFun = 
 		fun(Nodes) -> 
 			lists:flatten(
-					[NewN || {OldN, NewN, Event} <- Nodes, lists:member(Event, Events)] 
+					[NewN || {Old, NewN, Event} <- Nodes, Old /= sync, lists:member(Event, Events)] 
 				++ 	[NodesSync || {sync, Event, NodesSync} <- Nodes, lists:member(Event, Events)]) 
 		end,
-	% NotSyncEventsFun = 
-	% 	fun(Nodes) -> 
-	% 		lists:flatten(
-	% 				[NewN || {OldN, NewN, Event} <- Nodes, not(lists:member(Event, Events))] 
-	% 			++ 	[Nodes || {sync, Event, Nodes} <- Nodes, not(lists:member(Event, Events))]) 
-	% 	end,
+	SyncEventsFullFun = 
+		fun(Nodes) -> 
+			lists:flatten(
+					[N || N = {Old, _, Event} <- Nodes, Old /= sync, lists:member(Event, Events)] 
+				++ 	[N || N = {sync, Event, _} <- Nodes, lists:member(Event, Events)]) 
+		end,
+	NotSyncEventsFun = 
+		fun(Nodes) -> 
+			lists:flatten(
+					[N || N = {Old, _, Event} <- Nodes, Old /= sync, not(lists:member(Event, Events))] 
+				++ 	[N|| N = {sync, Event, _} <- Nodes, not(lists:member(Event, Events))]) 
+		end,
 	EventsFun = 
 		fun(Nodes) -> 
 			% io:format("EventsFun: ~p\n", [Nodes]),
 			Res0 = 
-				[ Event || {OldN, NewN, Event} <- Nodes] 
-			++ 	[ Event || {sync, Event, _} <- Nodes],
+				[ {Event, Old} || {Old, _, Event} <- Nodes, Old /= sync] 
+			++ 	[ {Event, lists:max(NodesSync)} || {sync, Event, NodesSync} <- Nodes],
 			Res = 
-				[E || E <- Res0, is_atom(E)],
+				% [E || E <- Res0, is_atom(E)],
+				Res0,
 			% io:format("ResEventsFun: ~p\n", [Res]),
 			Res
 		end,
@@ -1302,43 +1311,67 @@ process_answer_from_track_sharing(
 	% io:format("NNodesB: ~w\n", [NNodesB]),
 	% io:format("SyncEventsB: ~w\n", [SyncEventsB]),
 	% io:format("CurrentB: ~w\n", [CurrentB]),
+	SyncEvents = 
+		SyncEventsA ++ SyncEventsB,
+	NNodesANNodesB = 
+		NNodesA ++ NNodesB,
 	NNodes = 
 		case IsInParallel of 
 			false -> 
-				build_sync_edges(SyncEventsA ++ SyncEventsB),
-				case length(SyncEventsA ++ SyncEventsB) > 0 of 
+				build_sync_edges(SyncEvents),
+				case length(SyncEvents) > 0 of 
 					true -> 
-						io:format("Is not in parallel: ~w\n", [SyncEventsA ++ SyncEventsB]),
-						% io:format("SYNC: ~w\n", [SyncEventsA ++ SyncEventsB]),
-						% io:format("NODES: ~w\n", [NNodesA ++ NNodesB]),
-						% io:format("EVENTS_SYNC: ~w\n", [EventsFun(
-						% 		[hd(SyncEventsA ++ SyncEventsB)])]),
+						% io:format("SYNC: ~w\n", [SyncEvents]),
+						% io:format("NODES: ~w\n", [NNodesANNodesB]),
+						% io:format("EVENTS_SYNC: ~w\n", [SyncEventsFullFun(NNodesANNodesB)]),
 						EventToPrint = 
 							hd(EventsFun(
-								[hd(NNodesA ++ NNodesB)])),
+								[hd(SyncEventsFullFun(NNodesANNodesB))])),
 						% io:format("NODES TRUE: ~w\n", [NNodesA ++ NNodesB]),
 						% io:format("EventToPrint TRUE: ~w\n", [EventToPrint]),
-						print_event(EventToPrint),
-						[{sync, EventToPrint, SyncEventsA ++ SyncEventsB}];
+						% print_event(EventToPrint),
+						NoSyncNodes = 
+							NotSyncEventsFun(NNodesANNodesB),
+						EventsToPrint = 
+							EventsFun(NoSyncNodes),
+						EventsToPrintSorted = 
+							lists:sort(
+								fun({_, A}, {_, B}) -> 
+									A =< B
+								end, 
+								[EventToPrint | EventsToPrint]),
+						[print_event(Event) || {Event, _} <- EventsToPrintSorted],
+						% io:format("Events: ~p\n", [Events]),
+						% io:format("Is not in parallel: ~w\n", [[{sync, EventToPrint, SyncEvents}] ++ NoSyncNodes]),
+						[{sync, EventToPrint, SyncEvents}] ++ NoSyncNodes;
 					false -> 
 						EventsToPrint = 
-							EventsFun(NNodesA ++ NNodesB),
+							EventsFun(NNodesANNodesB),
 						% io:format("NODES FALSE: ~w\n", [NNodesA ++ NNodesB]),
 						% io:format("EventToPrint FALSE: ~p\n", [EventsToPrint]),
-						[print_event(Event) || Event <- EventsToPrint],
-						NNodesA ++ NNodesB
+						EventsToPrintSorted = 
+							lists:sort(
+								fun({_, A}, {_, B}) -> 
+									A =< B
+								end, 
+								EventsToPrint),
+						[print_event(Event) || {Event, _} <- EventsToPrintSorted],
+						NNodesANNodesB
 				end;
 			_ -> 
-				case length(SyncEventsA ++ SyncEventsB) > 0 of 
+				case length(SyncEvents) > 0 of 
 					true ->
-						EventToPrint = 
+						{EventToPrint,_} = 
 							hd(EventsFun(
-								[hd(NNodesA ++ NNodesB)])),
+								[hd(SyncEventsFullFun(NNodesANNodesB))])),
+						NoSyncNodes = 
+							NotSyncEventsFun(NNodesANNodesB),
 						% io:format("NODES *: ~w\n", [NNodesA ++ NNodesB]),
 						% io:format("EventToPrint *: ~w\n", [EventToPrint]),
-						[{sync, EventToPrint, SyncEventsA ++ SyncEventsB}];
+						% io:format("Is in parallel: ~w\n", [[{sync, EventToPrint, SyncEvents}] ++ NoSyncNodes]),
+						[{sync, EventToPrint, SyncEvents}] ++ NoSyncNodes;
 					false -> 
-						NNodesA ++ NNodesB
+						NNodesANNodesB
 				end
 		end,
 	% io:format("NNodes: ~p\n", [NNodes]),
@@ -1406,9 +1439,11 @@ reverse_options_list([H | T], Track, PendingSync, Acc) ->
 					sets:from_list(NPendingSync0),
 				SetSyncNodes = 
 					sets:from_list(SyncNodes),
+				% io:format("{NPendingSync0, SyncNodes} =\n~p\n~p\n", [lists:sort(NPendingSync0), lists:sort(SyncNodes)]),
 				{ReachableFromSyncNodes, NPendingSync1, NAcc0} = 
-					case sets:intersection(SetCurrentPending, SetSyncNodes) of 
-						SetSyncNodes -> 
+					case lists:sort(sets:to_list(sets:intersection(SetCurrentPending, SetSyncNodes))) of 
+						SyncNodes -> 
+							% io:format("ENTRA: ~w\n", [a]),
 							% All sync nodes are options 
 							{
 								digraph_utils:reachable(SyncNodes, Track), 
@@ -1417,6 +1452,7 @@ reverse_options_list([H | T], Track, PendingSync, Acc) ->
 								[ SyncNodes | Acc]
 							};
 						_ -> 
+							% io:format("NO ENTRA: ~w\n", [lists:sort(sets:to_list(sets:intersection(SetCurrentPending, SetSyncNodes)))]),
 							{
 								[],
 								NPendingSync0,
