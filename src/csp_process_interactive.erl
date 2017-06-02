@@ -966,23 +966,24 @@ process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing,
 				{create_graph, P, Parent, get_self()}),
 			receive
 				{created, NParent} ->
-					% {Nexp, NCurrent, NNodes} = 
-					% 	process_answer_from_track(
-					% 		ProcessPrefixing, 
-					% 		NParent, 
-					% 		Track, 
-					% 		Current + 2),
-					% {Nexp, NCurrent, NNodes ++ [{Current, (NParent - 1), Event}]}
-					{NCurrent, CurrentNode} = 
-						% case same_span(SPAN1, Track, Current) of 
-						% 	true -> 
-								{Current + 2, Current}, %;
-						% 	false -> 
-						% 		{Current + 1, Current - 1}
-						% end,
-					NNodes = 
-						[{CurrentNode, (NParent - 1), Event}],
-					{{ProcessPrefixing, NParent}, NCurrent, NNodes, [{CurrentNode, (NParent - 1)}, {CurrentNode + 1, NParent}  | Dict]}
+					{Nexp, NCurrent, NNodes, NDict} = 
+						process_answer_from_track(
+							ProcessPrefixing, 
+							NParent, 
+							Track,
+							[{Current, (NParent - 1)}, {Current + 1, NParent}  | Dict],
+							Current + 2),
+					{Nexp, NCurrent, NNodes ++ [{Current, (NParent - 1), Event}], NDict}
+					% {NCurrent, CurrentNode} = 
+					% 	% case same_span(SPAN1, Track, Current) of 
+					% 	% 	true -> 
+					% 			{Current + 2, Current}, %;
+					% 	% 	false -> 
+					% 	% 		{Current + 1, Current - 1}
+					% 	% end,
+					% NNodes = 
+					% 	[{CurrentNode, (NParent - 1), Event}],
+					% {{ProcessPrefixing, NParent}, NCurrent, NNodes, [{CurrentNode, (NParent - 1)}, {CurrentNode + 1, NParent}  | Dict]}
 			end;
 		false ->
 			% io:format("The span are not the same: ~p\n", [{Current, P}]),
@@ -1027,14 +1028,15 @@ process_answer_from_track(P = {'|~|', PA, PB, SPAN}, Parent, Track, Dict, Curren
 						{create_graph, {'|~|', PA, PB, list_to_atom(SelectedStr), SPAN}, Parent, get_self()}),
 					receive
 						{created, NParent} ->
-							% {Nexp, NCurrent, NNodes} = 	
-							% 	process_answer_from_track(
-							% 		Selected, 
-							% 		NParent, 
-							% 		Track, 
-							% 		Current + 1),
-							% {Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}]}
-							{{Selected, NParent}, Current + 1, [{Current, NParent, Event}], [{Current, NParent} | Dict]}
+							{Nexp, NCurrent, NNodes, NDict} = 	
+								process_answer_from_track(
+									Selected, 
+									NParent, 
+									Track, 
+									[{Current, NParent} | Dict],
+									Current + 1),
+							{Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}], NDict}
+							% {{Selected, NParent}, Current + 1, [{Current, NParent, Event}], [{Current, NParent} | Dict]}
 					end;
 			% end;
 		false ->
@@ -1064,14 +1066,15 @@ process_answer_from_track(P = {agent_call, SPAN, ProcessName, Arguments}, Parent
 				{create_graph, P, Parent, get_self()}),
 			receive
 				{created, NParent} ->
-					% {Nexp, NCurrent, NNodes} = 
-					% 	process_answer_from_track(
-					% 		NCode, 
-					% 		NParent, 
-					% 		Track, 
-					% 		Current + 1),
-					% {Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}] }
-					{{NCode, NParent}, Current + 1, [{Current, NParent, Event}],  [{Current, NParent} | Dict]}
+					{Nexp, NCurrent, NNodes, NDict} = 
+						process_answer_from_track(
+							NCode, 
+							NParent, 
+							Track, 
+							[{Current, NParent} | Dict],
+							Current + 1),
+					{Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}], NDict}
+					% {{NCode, NParent}, Current + 1, [{Current, NParent, Event}],  [{Current, NParent} | Dict]}
 			end;
 		false -> 
 			{{P, Parent}, Current, [], Dict}
@@ -1305,6 +1308,7 @@ process_answer_from_track_sharing(
 				build_sync_edges(SyncEventsA ++ SyncEventsB),
 				case length(SyncEventsA ++ SyncEventsB) > 0 of 
 					true -> 
+						io:format("Is not in parallel: ~w\n", [SyncEventsA ++ SyncEventsB]),
 						% io:format("SYNC: ~w\n", [SyncEventsA ++ SyncEventsB]),
 						% io:format("NODES: ~w\n", [NNodesA ++ NNodesB]),
 						% io:format("EVENTS_SYNC: ~w\n", [EventsFun(
