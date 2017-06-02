@@ -2,9 +2,4 @@ channel a, b
 
 MAIN = R
 
-R = (P [|{|a|}|] Q)
-S = (P [|{|b|}|] Q)
-
-P = (a -> b -> SKIP; S) |~| Q
-
-Q = (b -> a -> SKIP; R) |~| P
+R = (a -> b -> R [|{|a,b|}|] a -> b -> R)

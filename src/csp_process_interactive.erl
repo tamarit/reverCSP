@@ -556,10 +556,17 @@ get_questions({'|||', PA, PB, SPAN}, Renamings) ->
 get_questions({'|||', PA, PB, _, _, SPAN}, Renamings) ->
 	get_questions(PA, Renamings) ++ get_questions(PB, Renamings);
 get_questions({sharing, {closure, Events}, PA, PB, SPAN}, Renamings) ->
-	Res = get_questions(PA, Renamings) ++ get_questions(PB, Renamings),
-	% io:format("Res: ~p\n", [Res]),
-	Res;
+	get_questions_sharing({Events, PA, PB}, Renamings);
 get_questions({sharing, {closure, Events}, PA, PB, _, _, SPAN}, Renamings) ->
+	get_questions_sharing({Events, PA, PB}, Renamings);
+get_questions({';', PA, _, _}, Renamings) -> 
+	get_questions(PA, Renamings);
+get_questions({skip, SPAN}, Renamings) ->
+	[];
+get_questions({finished_skip, _, _}, Renamings) ->
+	[].
+
+get_questions_sharing({Events, PA, PB}, Renamings) -> 
 	OptA = 
 		get_questions(PA, Renamings),
 	OptB = 
@@ -605,25 +612,11 @@ get_questions({sharing, {closure, Events}, PA, PB, _, _, SPAN}, Renamings) ->
 			end,
 			[],
 			PrefSyncA),
+	% io:format("PrefSync: ~w\n", [PrefSync]),
+	% io:format("PrefNotSync: ~w\n", [PrefNotSync]),
 	Opts = NotPref ++ [Pref || {_, Pref} <- PrefNotSync] ++ PrefSync,
 	% io:format("Opts: ~p\n", [Opts]),
-	Opts;
-% 	% Descartar els no factibles (per sincronitzacio)
-% 	% Juntar opcions quan syncronitzacio (contemplant totes les combinacions)
-% 	% la resta fer append
-% 	% Lo que tiene que sincronizarse podría enviarse cuando se decide aquí a un servidor. Luego cada vez que se dibuje un prefixing que se le pregunte a ese servidor si queire info de sincronización. Si es así entonces la envía. El único problema es como identificar quien es quien por ejemplo (P || P) al desplegase si es (P = a -> P) no distinguiremos entre las a's facilmente. 
-% 	% Otra opción sería que process_answer devolviese también info de sincronización juno al nuevo proceso. Esta info se usará siempre que lleguemos a un paralelismo que sincronice en dicho evento.
-% 	get_questions(PA, Renamings) ++ get_questions(PB, Renamings);
-% get_questions({sharing, {closure, Events}, PA, PB, _, _, SPAN}, Renamings) ->
-% 	get_questions(PA, Renamings) ++ get_questions(PB, Renamings);
-% get_questions({procRenaming, ListRenamings, P, SPAN}, Renamings) ->
-% 	get_questions(P, [ListRenamings | Renamings]);
-get_questions({';', PA, _, _}, Renamings) -> 
-	get_questions(PA, Renamings);
-get_questions({skip, SPAN}, Renamings) ->
-	[];
-get_questions({finished_skip, _, _}, Renamings) ->
-	[].
+	Opts.
 
 process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L = [_|_], Parent) ->
 	case lists:member(P, L) of 
