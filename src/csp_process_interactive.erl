@@ -42,7 +42,7 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 			% io:format("EdgesDigraph: ~p\n", [EdgesDigraph]),
 			Digraph = 
 				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-			csp_tracker:print_from_digraph(Digraph, "current1_1", [], false),
+			% csp_tracker:print_from_digraph(Digraph, "current1_1", [], false),
 			EvalInfo = 
 				start_from_track(FirstProcess, Digraph),
 			start_reverse_mode(
@@ -97,7 +97,7 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 		fun () -> 
 			csp_tracker:print_from_digraph(Digraph, "current", [], false)
 		end,
-	csp_tracker:print_from_digraph(Digraph, "current2", [], false),
+	% csp_tracker:print_from_digraph(Digraph, "current2", [], false),
 	% csp_tracker:print_from_digraph(Digraph, "track_from_track", [], false),
 	% io:format("\n*********** Trace from track ************\n\n~s\n******************************\n",[Trace]),
 	ReverseOptions = 
@@ -170,7 +170,6 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 							start_from_track_continue_user(FirstProcess, Digraph, [])
 					end;
 				[_|_] ->
-					% error("algo"),
 					ReverseOptionsReady = 
 						prepare_questions_reverse(FirstProcess, ReverseOptions, Digraph),
 					AdditionalOptions = 
@@ -383,6 +382,7 @@ execute_csp({Exp, Parent}, Previous) ->
 	end.
 
 csp_process_option_processing(Exp, Answer, Parent) ->
+	put(in_parallelism, false),
 	{NExp, NNodes} = 
 		process_answer(Exp, Answer, Parent),
 	case Answer of 
@@ -627,10 +627,10 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L =
 	case lists:member(P, L) of 
 		true ->
 			case get(in_parallelism) of 
-				true -> 
-					ok;
+				false -> 
+					print_event(Event);
 				_ -> 
-					print_event(Event) 
+					ok
 			end,
 			send_message2regprocess(
 				printer,
@@ -646,10 +646,10 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L =
 	end;
 process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, Parent) ->
 	case get(in_parallelism) of 
-		true -> 
-			ok;
+		false -> 
+			print_event(Event);
 		_ -> 
-			print_event(Event) 
+			ok
 	end,
 	send_message2regprocess(
 		printer,
@@ -818,7 +818,7 @@ process_answer_interleaving({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN) ->
 process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) -> 
 	IsInParallel = 
 		get(in_parallelism),
-	put(in_parallelism, true),
+	put(in_parallelism, [true | IsInParallel]),
 	{{NPA, NParentA}, NNodesA} = 
 		process_answer(PA, P, ParentA),
 	{{NPB, NParentB}, NNodesB} =
@@ -828,11 +828,9 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 			_ ->   
 				process_answer(PB, P, ParentB)
 		end,
-	put(in_parallelism, false),
+	put(in_parallelism, IsInParallel),
 	case IsInParallel of 
-		true -> 
-			ok;
-		_ -> 
+		false -> 
 			case {NPA /= PA, NPB /= PB} of 
 				{true, true} ->  
 					% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
@@ -844,7 +842,9 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 					EventsToPrint = 
 						[E || {_,E} <- (NNodesA ++ NNodesB)],
 					[print_event(Event) || Event <- EventsToPrint]
-			end
+			end;
+		_ -> 
+			ok
 	end,
 	NProcess = 
 		case {NPA, NPB} of 
@@ -934,6 +934,7 @@ execute_csp_from_track({Exp, Parent}, Track, Current, Top, Dict) ->
 	% io:format("Current: ~p\n", [Current]),
 	% io:format("\n++++++\nExp: ~s\n++++++\n", [csp_expression_printer:csp2string(Exp)]),
 	put(top, Top),
+	put(in_parallelism, false),
 	{NExpParent = {NExp,_}, NCurrent, NNodes, NDict} = 
 		process_answer_from_track(Exp, Parent, Track, Dict, Current),
 	% io:format("NCurrent: ~p\n", [NCurrent]),
@@ -955,10 +956,10 @@ process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing,
 		true -> 
 			% io:format("The span are the same: ~p\n", [{Current, P}]),
 			case get(in_parallelism) of 
-				true -> 
-					ok;
+				false -> 
+					print_event(Event);
 				_ -> 
-					print_event(Event)
+					ok
 			end,
 			send_message2regprocess(
 				printer,
@@ -1016,10 +1017,10 @@ process_answer_from_track(P = {'|~|', PA, PB, SPAN}, Parent, Track, Dict, Curren
 						list_to_atom("   tau -> Internal Choice. Branch: "
 							++ csp_expression_printer:csp2string(Selected)),
 					case get(in_parallelism) of 
-						true -> 
-							ok;
+						false -> 
+							print_event(Event);
 						_ -> 
-							print_event(Event)
+							ok
 					end,
 					send_message2regprocess(
 						printer,
@@ -1053,10 +1054,10 @@ process_answer_from_track(P = {agent_call, SPAN, ProcessName, Arguments}, Parent
 					++ atom_to_list(ProcessName)
 					++ printer:string_arguments(Arguments)),
 			case get(in_parallelism) of 
-				true -> 
-					ok;
+				false -> 
+					print_event(Event);
 				_ -> 
-					print_event(Event)
+					ok
 			end,
 			send_message2regprocess(
 				printer,
@@ -1140,7 +1141,7 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 		Events,
 		Dict);
 process_answer_from_track(P = {';', PA, PB, SPAN}, Parent, Track, Dict, Current) ->
-	{{NPA, NParentA}, NCurrent0, NNodesA}  = 
+	{{NPA, NParentA}, NCurrent0, NNodesA, NDict0}  = 
 		process_answer_from_track(PA, Parent, Track, Dict, Current), 
 	{NSC_NParent, NCurrent, NDict} = 
 		case NPA of 
@@ -1151,22 +1152,22 @@ process_answer_from_track(P = {';', PA, PB, SPAN}, Parent, Track, Dict, Current)
 						{';', NodesSkipA, SPAN}, -1, get_self()}),
 				receive
 					{created, NParent0} ->
-						{{PB, NParent0}, NCurrent0 + 1, [{NCurrent0, NParent0} | Dict]}
+						{{PB, NParent0}, NCurrent0 + 1, [{NCurrent0, NParent0} | NDict0]}
 				end;
 			_ -> 
-				{{{';', NPA, PB, SPAN}, NParentA}, NCurrent0, Dict}
+				{{{';', NPA, PB, SPAN}, NParentA}, NCurrent0, NDict0}
 		end,
-	{NSC_NParent, NCurrent, NNodesA};
+	{NSC_NParent, NCurrent, NNodesA, NDict};
 process_answer_from_track(P = {skip, SPAN}, Parent, Track, Dict, Current) ->
 	case same_span(SPAN, Track, Current, Parent, Dict) of 
 		true ->
 			Event = 
 				'   tau (SKIP)',
 			case get(in_parallelism) of 
-				true -> 
-					ok;
+				false -> 
+					print_event(Event);
 				_ -> 
-					print_event(Event)
+					ok
 			end,
 			send_message2regprocess(
 				printer,
@@ -1226,7 +1227,7 @@ process_answer_from_track_sharing(
 	% io:format("~p\n~p\n*****************\n", [SPAN, {{PA, ParentA}, {PB, ParentB}, Current}]),
 	IsInParallel = 
 		get(in_parallelism),
-	put(in_parallelism, true),
+	put(in_parallelism, [true | IsInParallel]),
 	% io:format("{Current, PA}: ~w\n", [{Current, ParentA, PA}]),
 	{{NPA0, NParentA0}, CurrentA0, NNodesA0, DictA0}  = 
 		process_answer_from_track(PA, ParentA, Track, Dict, Current), 
@@ -1290,7 +1291,7 @@ process_answer_from_track_sharing(
 		end,
 	SyncEventsA = 
 		SyncEventsFun(NNodesA),
-	put(in_parallelism, false),
+	put(in_parallelism, IsInParallel),
 	% io:format("Current: ~w\n", [Current]),
 	% io:format("NNodesA: ~w\n", [NNodesA]),
 	% io:format("SyncEventsA: ~w\n", [SyncEventsA]),
@@ -1300,20 +1301,7 @@ process_answer_from_track_sharing(
 	% io:format("CurrentB: ~w\n", [CurrentB]),
 	NNodes = 
 		case IsInParallel of 
-			true -> 
-				case length(SyncEventsA ++ SyncEventsB) > 0 of 
-					true ->
-						EventToPrint = 
-							hd(EventsFun(
-								[hd(NNodesA ++ NNodesB)])),
-						% io:format("NODES *: ~w\n", [NNodesA ++ NNodesB]),
-						% io:format("EventToPrint *: ~w\n", [EventToPrint]),
-						[{sync, EventToPrint, SyncEventsA ++ SyncEventsB}];
-					false -> 
-						NNodesA ++ NNodesB
-				end;
-				% NNodesA ++ NNodesB;
-			_ -> 
+			false -> 
 				build_sync_edges(SyncEventsA ++ SyncEventsB),
 				case length(SyncEventsA ++ SyncEventsB) > 0 of 
 					true -> 
@@ -1335,8 +1323,19 @@ process_answer_from_track_sharing(
 						% io:format("EventToPrint FALSE: ~p\n", [EventsToPrint]),
 						[print_event(Event) || Event <- EventsToPrint],
 						NNodesA ++ NNodesB
+				end;
+			_ -> 
+				case length(SyncEventsA ++ SyncEventsB) > 0 of 
+					true ->
+						EventToPrint = 
+							hd(EventsFun(
+								[hd(NNodesA ++ NNodesB)])),
+						% io:format("NODES *: ~w\n", [NNodesA ++ NNodesB]),
+						% io:format("EventToPrint *: ~w\n", [EventToPrint]),
+						[{sync, EventToPrint, SyncEventsA ++ SyncEventsB}];
+					false -> 
+						NNodesA ++ NNodesB
 				end
-				% NNodesA ++ NNodesB
 		end,
 	% io:format("NNodes: ~p\n", [NNodes]),
 	% io:format("SyncEventsA: ~p\n", [SyncEventsA]),

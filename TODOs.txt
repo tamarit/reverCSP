@@ -1,3 +1,5 @@
+- fix repeated events in trace (sync)
+- fix lost sync edges when reverse
 - go back to certain element of the trace -> simply left as it is
 - Optional: allow the internal choice as option in reverse evaluation. 
 - Undo

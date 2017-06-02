@@ -4,8 +4,6 @@ MAIN = R
 
 R = (P [|{|a|}|]  Q)
 
--- P = (a -> b -> SKIP; P) |~| Q
-P = (a -> b -> P) |~| Q
+P = (a -> b -> SKIP; P) |~| Q
 
--- Q = (b -> a -> SKIP; R) |~| P
-Q = (b -> a -> R) |~| P
+Q = (b -> a -> SKIP; R) |~| P
