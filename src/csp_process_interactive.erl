@@ -387,6 +387,8 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	put(in_parallelism, false),
 	{NExp, NNodes} = 
 		process_answer(Exp, Answer, Parent),
+	% io:format("{Exp, Answer, Parent}: ~p\n", [{Exp, Answer, Parent}]),
+	% io:format("{NExp, NNodes}: ~p\n", [{NExp, NNodes}]),
 	case Answer of 
 		[_|_] -> 
 			build_sync_edges([N || {N, _} <- NNodes]);
@@ -682,7 +684,9 @@ process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
 		{create_graph, {'|~|', PA, PB, SelectedAtom, SPAN}, Parent, get_self()}),
 	receive
 		{created, NParent} ->
-			{{Selected, NParent}, []}
+			{NExp, NNodes} = 
+				process_answer(Selected, P, NParent),
+			{NExp, NNodes}
 	end;
 process_answer(P = {agent_call, SPAN, ProcessName, Arguments}, P, Parent) ->
 	send_message2regprocess(codeserver, {ask_code, ProcessName, Arguments, get_self()}),
@@ -701,7 +705,16 @@ process_answer(P = {agent_call, SPAN, ProcessName, Arguments}, P, Parent) ->
 		{create_graph, P, Parent, get_self()}),
 	receive
 		{created, NParent} ->
-			{{NCode, NParent}, []}
+			{NExp, NNodes} = 
+				case NCode of 
+					{sharing, _, _, _, _} -> 
+						process_answer(NCode, P, NParent);
+					{'|||', _, _, _} -> 
+						process_answer(NCode, P, NParent);
+					_ -> 
+						{{NCode, NParent}, []}
+				end,
+			{NExp, NNodes}
 	end;
 process_answer(IL = {'|||', PA, PB, SPAN}, P, Parent) ->
 	send_message2regprocess(
@@ -788,8 +801,14 @@ process_answer_interleaving({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN) ->
 		process_answer(PA, P, ParentA),
 	{{NPB, NParentB}, NNodesB} =
 		case {not(is_list(P)), NPA /= PA} of 
+		% case {not(is_list(P)), ParentA /= NParentA} of
 			{true, true} ->
-				{{PB, ParentB}, []};
+				% case {PA, NPA} of 
+				% 	{{sharing, _, _, _, _}, {sharing, _, _, _, _, _, _} } -> 
+				% 		process_answer(PB, P, ParentB);
+				% 	_ -> 		
+						{{PB, ParentB}, []};
+				% end;
 			_ ->   
 				process_answer(PB, P, ParentB)
 		end,
@@ -818,8 +837,14 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 		process_answer(PA, P, ParentA),
 	{{NPB, NParentB}, NNodesB} =
 		case {not(is_list(P)), NPA /= PA} of 
+		% case {not(is_list(P)), ParentA /= NParentA} of 
 			{true, true} ->
-				{{PB, ParentB}, []};
+				% case {PA, NPA} of 
+					% {{sharing, _, _, _, _}, {sharing, _, _, _, _, _, _} } -> 
+					% 	process_answer(PB, P, ParentB);
+					% _ -> 		
+						{{PB, ParentB}, []};
+				% end;
 			_ ->   
 				process_answer(PB, P, ParentB)
 		end,
@@ -830,9 +855,14 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 				{true, true} ->  
 					% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
 					% io:format("~p\n", [NNodesA ++ NNodesB]),
-					EventToPrint = 
-						element(2, hd(NNodesA ++ NNodesB)),
-					print_event(EventToPrint);
+					case (NNodesA ++ NNodesB) of 
+						[] -> 
+							ok;
+						_ -> 
+							EventToPrint = 
+								element(2, hd(NNodesA ++ NNodesB)),
+							print_event(EventToPrint)
+					end;
 				_ -> 
 					EventsToPrint = 
 						[E || {_,E} <- lists:sort(NNodesA ++ NNodesB)],
