@@ -16,6 +16,7 @@
 			register_printer/0,
 			print_trace/1,
 			ask_questions/3,
+			get_answer/2,
 			build_sync_edges/1
 		]).
 
@@ -292,4 +293,3 @@ build_sync_edges(_) ->
 	ok.
 
 
-	

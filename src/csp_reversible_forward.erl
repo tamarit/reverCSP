@@ -247,19 +247,6 @@ process_answer_exe(Other, _, _) ->
 build_str_tuples(List) ->
 	[{E, csp_reversible_lib:csp2string(E)} || E <- List].
 
-
-build_question_option({O, Name}, {N, Lines, Answers, Dict}) ->
-    NLines = 
-        [csp_reversible_lib:format("~p .- ~s", [N, Name]) |Lines],
-    {
-    	N + 1, 
-    	NLines, 
-    	[csp_reversible_lib:format("~p", [N]) | Answers], 
-    	dict:store(N, O, Dict)
-    };
-build_question_option(Other, {N, Lines, Answers, Dict}) ->
-    build_question_option({Other, Other}, {N, Lines, Answers, Dict}).
-
 % Para el Seq Comp las preguntas las sacamos del primer proceso. Cuando estemos procesando el segundo ya no habrá SC
 % Cuando se llegue a ser skip el primer proceso entonces se quita. Igual debería de guardarse en un skip especial o algo así los nodos para saber a que tiene que unirse. i.e. process_answer({skip, SPAN}, _) -> SE DIBUJA SKIP y se devuelve {skip, SPAN, [nodo_skip]}.
 % Cuando un paralslismo acaben los dos con {skip,_,_}, meter un {skip, SPAN, Nods_skip}.
