@@ -8,7 +8,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 run(File) -> 
-	run(File,'MAIN').
+	run(File, 'MAIN').
 
 run(File, FirstProcess) -> 
 	io:format("~s\n", [File]),
@@ -46,20 +46,13 @@ run(File, FirstProcess) ->
 					     true -> ok;
 					     false -> 
 					     	register(codeserver, spawn(codeserver,loop,[Processes]))
-					end,
-					% case lists:member(printer,registered()) of
-					%      true -> ok;
-					%      false -> 
-					%      	register(printer, 
-					%          spawn(printer,loop,
-					%             [all, false]))
-					% end,					
+					end,				
 					{{{N,E,S,_},_G,Trace}, DigraphContent} = 
-						csp_process_interactive:start(FirstProcess),
+						csp_reversible_forward:start(FirstProcess),
 					{NodesDigraph, EdgesDigraph} = DigraphContent,
 					Digraph = csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
 					csp_tracker:print_from_digraph(Digraph, "track", [], false),
-					io:format("\n*********** Trace ************\n\n~s\n******************************\n",[Trace]),
+					csp_reversible_lib:print_trace(Trace),
 					TrackStr = 
 						io_lib:format("~p.\n~p.\n", [NodesDigraph, EdgesDigraph]),
 					file:write_file("track.txt", list_to_binary(TrackStr)),
