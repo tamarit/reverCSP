@@ -3,7 +3,6 @@
 -export([
 			start/1,
 			start_from_expr/3
-			% csp_reversible_backward:start_from_track/2, 
 			% reverse_options/1, 
 			% remove_from_track/2
 		]).
@@ -144,7 +143,7 @@ execute_csp({Exp, Parent}, Previous) ->
 									{f, "Finish evaluation."}
 								],
 							case csp_reversible_lib:ask_questions(
-									build_str_tuples(Questions) ++ AdditionalOptions, 
+									csp_reversible_lib:build_str_tuples(Questions) ++ AdditionalOptions, 
 									fun process_answer_exe/3,
 									[]) 
 							of 
@@ -185,7 +184,7 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	% io:format("{NExp, NNodes}: ~p\n", [{NExp, NNodes}]),
 	case Answer of 
 		[_|_] -> 
-			csp_reversible_lib:build_sync_edges([N || {N, _} <- NNodes]);
+			csp_reversible_lib:build_sync_edges(lists:flatten([N || {N, _} <- NNodes]));
 			% io:format("~p\n", [lists:seq(1, length(NNodes) - 1)]),
 			% [ begin
 			% 	csp_reversible_lib:send_message2regprocess(
@@ -203,16 +202,29 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	NExp.
 
 execute_csp_random({Exp, Parent}, Options, Steps) -> 
-	Answer = 
-		lists:nth(rand:uniform(length(Options)), Options),
-	io:format(
-		"\nRandomly selected:\n~s\n", 
-		[csp_reversible_lib:csp2string(Answer)]),
-	put(random_choice, true),
-	NExp = 
-		csp_process_option_processing(Exp, Answer, Parent),
-	put(random_choice, false),
-	execute_csp(NExp, Steps - 1).
+	FunHasBP = 
+		fun(List) -> 
+			[bp || {prefix, _, _, bp, _, _} <- List]
+		end,
+	HasBP = 
+			FunHasBP(Options) 
+		++ 	lists:concat([FunHasBP(O) || O <- Options, is_list(O)]),
+	case HasBP of 
+		[] -> 
+			Answer = 
+				lists:nth(rand:uniform(length(Options)), Options),
+			io:format(
+				"\nRandomly selected:\n~s\n", 
+				[csp_reversible_lib:csp2string(Answer)]),
+			put(random_choice, true),
+			NExp = 
+				csp_process_option_processing(Exp, Answer, Parent),
+			put(random_choice, false),
+			execute_csp(NExp, Steps - 1);
+		_ ->
+			execute_csp({Exp, Parent}, [])
+	end.
+
 
 process_answer_exe(t, RC, _) ->
 	csp_reversible_lib:send_message2regprocess(printer,{get_trace, csp_reversible_lib:get_self()}),
@@ -244,8 +256,11 @@ process_answer_exe(rfr, _, _) ->
 process_answer_exe(Other, _, _) ->
 	Other.
 
-build_str_tuples(List) ->
-	[{E, csp_reversible_lib:csp2string(E)} || E <- List].
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   Options available
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Para el Seq Comp las preguntas las sacamos del primer proceso. Cuando estemos procesando el segundo ya no habrá SC
 % Cuando se llegue a ser skip el primer proceso entonces se quita. Igual debería de guardarse en un skip especial o algo así los nodos para saber a que tiene que unirse. i.e. process_answer({skip, SPAN}, _) -> SE DIBUJA SKIP y se devuelve {skip, SPAN, [nodo_skip]}.
@@ -325,6 +340,13 @@ get_questions_sharing({Events, PA, PB}, Renamings) ->
 	% io:format("Opts: ~p\n", [Opts]),
 	Opts.
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%   Execution from an answer
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L = [_|_], Parent) ->
 	case lists:member(P, L) of 
 		true ->
@@ -369,7 +391,7 @@ process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
 				lists:nth(rand:uniform(2), [PA, PB]);
 			_ ->
 				csp_reversible_lib:ask_questions(
-					build_str_tuples([PA, PB]), 
+					csp_reversible_lib:build_str_tuples([PA, PB]), 
 					fun process_answer_exe/3, 
 					[])
 		end,
@@ -554,28 +576,41 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 				process_answer(PB, P, ParentB)
 		end,
 	put(in_parallelism, IsInParallel),
-	case IsInParallel of 
-		false -> 
-			case {NPA /= PA, NPB /= PB} of 
-				{true, true} ->  
-					% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
-					% io:format("~p\n", [NNodesA ++ NNodesB]),
-					case (NNodesA ++ NNodesB) of 
-						[] -> 
-							ok;
-						_ -> 
-							EventToPrint = 
-								element(2, hd(NNodesA ++ NNodesB)),
-							csp_reversible_lib:print_event(EventToPrint)
-					end;
-				_ -> 
-					EventsToPrint = 
-						[E || {_,E} <- lists:sort(NNodesA ++ NNodesB)],
-					[csp_reversible_lib:print_event(Event) || Event <- EventsToPrint]
-			end;
-		_ -> 
-			ok
-	end,
+	NNodes = 
+		case IsInParallel of 
+			false -> 
+				case {NPA /= PA, NPB /= PB} of 
+					{true, true} ->  
+						% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
+						% io:format("DIFF: ~p\n", [NNodesA ++ NNodesB]),
+						case (NNodesA ++ NNodesB) of 
+							[] -> 
+								ok;
+							_ -> 
+								EventToPrint = 
+									element(2, hd(NNodesA ++ NNodesB)),
+								csp_reversible_lib:print_event(EventToPrint)
+						end;
+					_ -> 
+						% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
+						% io:format("SAME: ~p\n", [NNodesA ++ NNodesB]),
+						EventsToPrint = 
+							[E || {_, E} <- lists:sort(NNodesA ++ NNodesB)],
+						[csp_reversible_lib:print_event(Event) || Event <- EventsToPrint]
+				end,
+				NNodesA ++ NNodesB;
+			_ -> 
+				case {NPA /= PA, NPB /= PB} of 
+					{true, true} -> 
+						{_, CommonEvent} =  
+							hd(NNodesA ++ NNodesB),
+						NodesAB = 
+							[N || {N, _} <- NNodesA ++ NNodesB],
+						[{NodesAB, CommonEvent}];
+					_ -> 
+						NNodesA ++ NNodesB
+				end
+		end,
 	NProcess = 
 		case {NPA, NPB} of 
 			{{finished_skip, _, NodesSkipA}, {finished_skip, _, NodesSkipB}} -> 
@@ -591,7 +626,7 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 		end,
 	{
 		{NProcess, Parent}, 
-		NNodesA ++ NNodesB
+		NNodes
 	}.
 
 

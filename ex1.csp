@@ -1,0 +1,7 @@
+channel a, b, c
+
+MAIN = ((A |~| c -> SKIP ) ||| b -> SKIP) ||| (c -> SKIP)
+
+A =  a -> A1
+
+A1 = SKIP

@@ -17,7 +17,8 @@
 			print_trace/1,
 			ask_questions/3,
 			get_answer/2,
-			build_sync_edges/1
+			build_sync_edges/1,
+			build_str_tuples/1
 		]).
 
 csp2string({prefix, _, _, Event, ProcessPrefixing, _}) ->
@@ -293,3 +294,5 @@ build_sync_edges(_) ->
 	ok.
 
 
+build_str_tuples(List) ->
+	[{E, csp_reversible_lib:csp2string(E)} || E <- List].

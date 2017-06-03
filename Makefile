@@ -16,8 +16,8 @@ clean:
 	@rm -Rf ebin
 	@rm -f *.txt
 
-run:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex.csp -noshell -s erlang halt
+run1:
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex1.csp -noshell -s erlang halt
 
 run2:
 	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex2.csp -noshell -s erlang halt
@@ -33,6 +33,9 @@ run5:
 
 run6:
 	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex6.csp -noshell -s erlang halt
+
+run7:
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex7.csp -noshell -s erlang halt
 
 run_paper:
 	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex_paper.csp -noshell -s erlang halt
