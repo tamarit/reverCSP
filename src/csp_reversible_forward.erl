@@ -37,6 +37,7 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 		stopped -> 
 			ok
 	end,
+	% The undo should be done only here, if not there are pending stops that never stop
 	case ResultExe of 
 		finish -> 
 			InfoGraph;
@@ -57,7 +58,15 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 			random_forward_reverse_action_from_forward(
 				FirstProcess, 
 				InfoGraph, 
-				Steps)
+				Steps);
+		{undo, {UExp, UParent}, UPrevious} ->
+			case InfoGraph of 
+				{{{0,0,0,_},"",""},{[],[]}} ->
+					io:format("Nothing to undo.\n"),
+					start_from_expr(FirstProcess, FirstExp, Previous);
+				_ -> 
+					execute_undo({UExp, UParent}, InfoGraph, UPrevious)
+			end
 	end.
 
 random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) -> 
@@ -127,7 +136,7 @@ execute_csp({Exp, Parent}, Previous) ->
 							[]),
 					case Answer of 
 						undo -> 
-							execute_undo({Exp, Parent}, Previous);
+							{undo, {Exp, Parent}, Previous};
 						_ -> 
 							Answer
 					end;
@@ -170,7 +179,7 @@ execute_csp({Exp, Parent}, Previous) ->
 								        	lists:seq(1, 1000)),
 									{forward_reverse, Steps};
 								undo -> 
-									execute_undo({Exp, Parent}, Previous);
+									{undo, {Exp, Parent}, Previous};
 								Answer  ->
 									% io:format("Answer: ~p\n", [Answer]),
 									NExp = 
@@ -209,49 +218,42 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	end,
 	NExp.
 
-execute_undo({Exp, Parent}, Previous) -> 
-	csp_reversible_lib:send_message2regprocess(printer,{info_graph_no_stop, csp_reversible_lib:get_self()}),
-	receive 
-		{info_graph, {{_,_,_}, {NodesDigraph, EdgesDigraph}}} ->
-			Digraph = 
-				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-			Undoable = 
-				csp_reversible_backward:reverse_options(Digraph),
-			case Undoable of 
-				[] -> 
-					io:format("Nothing to undo.\n"),
-					digraph:delete(Digraph),
-					execute_csp({Exp, Parent}, Previous);
-				_ ->
-					csp_reversible_lib:send_message2regprocess(printer,{stop, csp_reversible_lib:get_self()}),
-					receive 
-						stopped -> 
-							ok
-					end,
-					{_,LastDone} = 
-						lists:max(
-							[{lists:max(Ns), Ns} 
-							|| Ns <- csp_reversible_backward:reverse_options(Digraph)]),
-					io:format("LastDone: ~w\n", [LastDone]),
-					ReverseOptionsReady = 
-						csp_reversible_backward:prepare_questions_reverse(get(first_process), [LastDone], Digraph),
-					[{NEvalInfo, Printed}] = 
-						ReverseOptionsReady,
-					io:format(
-						"\nUndone:\n~s\n", 
-						[Printed]),
-					{{_, NDigraphContent}, _} = 
-						NEvalInfo,
-					{NNodesDigraph, NEdgesDigraph} = 
-						NDigraphContent,
-					NDigraph = 
-						csp_tracker:build_digraph(NNodesDigraph, NEdgesDigraph),
-					digraph:delete(Digraph),
-					csp_reversible_backward:start_from_track_continue_user(
-						get(first_process), 
-						NDigraph, 
-						Previous)
-			end
+execute_undo({Exp, Parent}, InfoGraph, Previous) ->
+	{{_,_,_}, {NodesDigraph, EdgesDigraph}}
+		= InfoGraph, 
+	Digraph = 
+		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+	Undoable = 
+		csp_reversible_backward:reverse_options(Digraph),
+	case Undoable of 
+		[] -> 
+			io:format("Nothing to undo.\n"),
+			digraph:delete(Digraph),
+			execute_csp({Exp, Parent}, Previous);
+		_ ->
+			{_,LastDone} = 
+				lists:max(
+					[{lists:max(Ns), Ns} 
+					|| Ns <- csp_reversible_backward:reverse_options(Digraph)]),
+			% io:format("LastDone: ~w\n", [LastDone]),
+			ReverseOptionsReady = 
+				csp_reversible_backward:prepare_questions_reverse(get(first_process), [LastDone], Digraph),
+			[{NEvalInfo, Printed}] = 
+				ReverseOptionsReady,
+			io:format(
+				"\nUndone:\n~s\n", 
+				[Printed]),
+			{{_, NDigraphContent}, _} = 
+				NEvalInfo,
+			{NNodesDigraph, NEdgesDigraph} = 
+				NDigraphContent,
+			NDigraph = 
+				csp_tracker:build_digraph(NNodesDigraph, NEdgesDigraph),
+			digraph:delete(Digraph),
+			csp_reversible_backward:start_from_track_continue_user(
+				get(first_process), 
+				NDigraph, 
+				Previous)
 	end.
 
 execute_csp_random({Exp, Parent}, Options, Steps) -> 
