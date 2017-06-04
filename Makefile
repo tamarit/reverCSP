@@ -16,32 +16,32 @@ clean:
 	@rm -Rf ebin
 	@rm -f *.txt
 
+run_paper:
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex_paper.csp -noshell -s erlang halt
+
 run1:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex1.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex1.csp -noshell -s erlang halt
 
 run2:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex2.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex2.csp -noshell -s erlang halt
 
 run3:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex3.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex3.csp -noshell -s erlang halt
 
 run4:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex4.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex4.csp -noshell -s erlang halt
 
 run5:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex5.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex5.csp -noshell -s erlang halt
 
 run6:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex6.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex6.csp -noshell -s erlang halt
 
 run7:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex7.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex7.csp -noshell -s erlang halt
 
 run8:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex8.csp -noshell -s erlang halt
-
-run_paper:
-	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex_paper.csp -noshell -s erlang halt
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex8.csp -noshell -s erlang halt
 
 update_sm:
 	@cd csp_tracker; git checkout master && git pull
