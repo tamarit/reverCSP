@@ -1,5 +1,5 @@
-- go back to certain element of the trace -> simply left as it is
-- Optional: allow the internal choice as option in reverse evaluation. 
 - Undo
-- Padding for options when there is more than 10 options
-- breakpoints: We want 3 types (forth, back, both) or only one?
+- go back to certain element of the trace -> by undoing things till the trace (only externals) are equal.
+- Optional: Padding for options when there is more than 10 options
+- Optional: We want 3 types of breakpoints (forth, back, both) or only one?
+- Optional: allow the internal choice as option in reverse evaluation. 
