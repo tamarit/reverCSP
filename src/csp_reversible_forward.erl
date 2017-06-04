@@ -100,14 +100,10 @@ execute_csp({Exp, Parent}, Previous) ->
 					io:format(
 						"\n\nCurrent expression:\n~s\n\n", 
 						[csp_reversible_lib:csp2string(Exp)]),
-					Answer = 
-						lists:nth(rand:uniform(length(Questions)), Questions),
-					io:format("\nForward evaluation. Randomly selected:\n~s\n", [csp_reversible_lib:csp2string(Answer)]),
-					put(random_choice, true),
-					csp_process_option_processing(Exp, Answer, Parent),
-					put(random_choice, false),
+					{_, NSteps} = 
+						select_random_option({Exp, Parent}, Questions, "Forward evaluation. ", N),
 					% io:format("PASA1\n"),
-					{forward_reverse, N - 1}
+					{forward_reverse, NSteps}
 			end;
 		_ -> 
 			io:format(
@@ -202,6 +198,11 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	NExp.
 
 execute_csp_random({Exp, Parent}, Options, Steps) -> 
+	{NExp, NSteps} = 
+		select_random_option({Exp, Parent}, Options, "", Steps),
+	execute_csp(NExp, NSteps).
+
+select_random_option({Exp, Parent}, Options, AdditionalInfo, Steps) -> 
 	FunHasBP = 
 		fun(List) -> 
 			[bp || {prefix, _, _, bp, _, _} <- List]
@@ -214,15 +215,15 @@ execute_csp_random({Exp, Parent}, Options, Steps) ->
 			Answer = 
 				lists:nth(rand:uniform(length(Options)), Options),
 			io:format(
-				"\nRandomly selected:\n~s\n", 
-				[csp_reversible_lib:csp2string(Answer)]),
+				"\n~sRandomly selected:\n~s\n", 
+				[AdditionalInfo, csp_reversible_lib:csp2string(Answer)]),
 			put(random_choice, true),
 			NExp = 
 				csp_process_option_processing(Exp, Answer, Parent),
 			put(random_choice, false),
-			execute_csp(NExp, Steps - 1);
+			{NExp, Steps - 1};
 		_ ->
-			execute_csp({Exp, Parent}, [])
+			{{Exp, Parent}, []}
 	end.
 
 

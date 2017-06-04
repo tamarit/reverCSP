@@ -47,18 +47,20 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 						[csp_reversible_lib:csp2string(ResExp)]),
 					ReverseOptionsReady = 
 						prepare_questions_reverse(FirstProcess, ReverseOptions, Digraph),
-					{NEvalInfo, Printed} = 
-						lists:nth(
-							rand:uniform(length(ReverseOptionsReady)), 
-							ReverseOptionsReady),
-					io:format("\nReverse evaluation. Randomly selected:\n~s\n", [Printed]),
-					digraph:delete(Digraph),
+					% {NEvalInfo, Printed} = 
+					% 	lists:nth(
+					% 		rand:uniform(length(ReverseOptionsReady)), 
+					% 		ReverseOptionsReady),
+					% io:format("\nReverse evaluation. Randomly selected:\n~s\n", [Printed]),
+					% digraph:delete(Digraph),
+					{NEvalInfo, NSteps} = 
+						select_random_option(ReverseOptionsReady, EvalInfo, "Reverse evaluation. ", Digraph, N),
 					case csp_reversible_lib:decide_eval_order() of 
 						reverse -> 
 							start_reverse_mode(
 								FirstProcess, 
 								NEvalInfo, 
-								{forward_reverse, N - 1});
+								{forward_reverse, NSteps});
 						forward -> 
 							{{_, NDigraphContent}, _} = 
 								NEvalInfo,
@@ -70,7 +72,7 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 							start_from_track_continue_user(
 								FirstProcess, 
 								NDigraph, 
-								{forward_reverse, N - 1})
+								{forward_reverse, NSteps})
 					end		
 			end;
 		_ -> 
@@ -115,7 +117,7 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 							digraph:delete(Digraph),
 							start_reverse_mode(FirstProcess, {InfoTrack, ResExp}, []);
 						N when is_integer(N) -> 
-							start_reverse_mode_random(FirstProcess, ReverseOptionsReady, Digraph, Previous);
+							start_reverse_mode_random(FirstProcess, EvalInfo, ReverseOptionsReady, Digraph, Previous);
 						_ -> 
 							case csp_reversible_lib:ask_questions(
 									ReverseOptionsReady ++ AdditionalOptions, 
@@ -132,7 +134,7 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 								        csp_reversible_lib:get_answer(
 								        	"\nHow many steps?\n[1..1000]: ", 
 								        	lists:seq(1, 1000)),
-									start_reverse_mode_random(FirstProcess, ReverseOptionsReady, Digraph, Steps);				
+									start_reverse_mode_random(FirstProcess, EvalInfo, ReverseOptionsReady, Digraph, Steps);				
 								random_forward_reverse -> 
 									Steps = 
 								        csp_reversible_lib:get_answer(
@@ -159,12 +161,36 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 			end
 	end.
 
-start_reverse_mode_random(FirstProcess, Options, Digraph, Steps) -> 
-	{NEvalInfo, Printed} = 
-		lists:nth(rand:uniform(length(Options)), Options),
-	io:format("\nRandomly selected:\n~s\n", [Printed]),
+start_reverse_mode_random(FirstProcess, EvalInfo, Options, Digraph, Steps) -> 
+	% io:format("Options: ~p\n", [Options]),
+	{NEvalInfo, NSteps} = 
+		select_random_option(Options, EvalInfo, "", Digraph, Steps),
+	start_reverse_mode(FirstProcess, NEvalInfo, NSteps).
+
+select_random_option(Options, EvalInfo, AdditionalInfo, Digraph, Steps) -> 
+	HasBP = 
+		lists:flatten(
+			[case Printed of 
+				[$b, $p | _] -> 
+					Printed;
+				_ -> 
+					[]
+			end
+			|| {_, Printed} <- Options]),
+	{NEvalInfo, NSteps} = 
+		case HasBP of 
+			[] -> 
+				{NEvalInfo0, Printed} = 
+					lists:nth(rand:uniform(length(Options)), Options),
+				io:format(
+					"\n~sRandomly selected:\n~s\n", 
+					[AdditionalInfo, Printed]),
+				{NEvalInfo0, Steps - 1};
+			_ ->
+				{EvalInfo, []}
+		end,
 	digraph:delete(Digraph),
-	start_reverse_mode(FirstProcess, NEvalInfo, Steps - 1).
+	{NEvalInfo, NSteps}.
 
 prepare_questions_reverse(FirstProcess, [H | T], G) ->
 	NG = csp_reversible_lib:copy_digraph(G),
