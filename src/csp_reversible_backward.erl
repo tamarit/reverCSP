@@ -3,7 +3,9 @@
 -export([
 			start_reverse_mode/3,
 			start_from_track/2,
-			start_from_track_continue_user/3
+			start_from_track_continue_user/3,
+			reverse_options/1,
+			prepare_questions_reverse/3
 		]).
 
 
@@ -208,11 +210,14 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 				[element(2, digraph:vertex(G, N)) 
 				|| N <- Ns]),
 			","),
+	% io:format("ARRIBA\n"),
 	remove_from_track(H, NG),
+	% io:format("ARRIBA2\n"),
 	% io:format("H: ~w\n", [H]),
 	% csp_tracker:print_from_digraph(NG, "current" ++ integer_to_list(length([H | T])), [], false),
 	Result = {_, ResExp} = 
 		start_from_track(FirstProcess, NG),
+	% io:format("ARRIBA3\n"),
 	% io:format("ResExp: ~p\n", [ResExp]),
 	Printed = 
 			NodeStr ++ "\n\t\\__ "  
@@ -247,7 +252,7 @@ process_answer_reverse(Other, _, _) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 start_from_track_continue_user(FirstProcess, Track, Previous) -> 
-	% io:format("ENTRA1\n"),
+	% io:format("ENTRA_1\n"),
 	csp_reversible_lib:register_printer(),
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
@@ -273,7 +278,7 @@ start_from_track_continue_user(FirstProcess, Track, Previous) ->
 	end.
 
 start_from_track(FirstProcess, Track) -> 
-	% io:format("ENTRA2\n"),
+	% io:format("ENTRA_2\n"),
 	csp_reversible_lib:register_printer(),
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},

@@ -37,6 +37,9 @@ run6:
 run7:
 	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex7.csp -noshell -s erlang halt
 
+run8:
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex8.csp -noshell -s erlang halt
+
 run_paper:
 	erl -pa ebin csp_tracker/ebin -run csp_reversible run ex_paper.csp -noshell -s erlang halt
 

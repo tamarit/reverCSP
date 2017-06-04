@@ -13,6 +13,7 @@
 
 
 start(FirstProcess) -> 
+	put(first_process, FirstProcess),
 	FirstExp = 
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
 	start_from_expr(FirstProcess, FirstExp, []).
@@ -31,7 +32,7 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 			1000 -> 
 				{{{0,0,0,now()},"",""},{[],[]}}
 		end,
-		csp_reversible_lib:send_message2regprocess(printer,{stop, csp_reversible_lib:get_self()}),
+	csp_reversible_lib:send_message2regprocess(printer,{stop, csp_reversible_lib:get_self()}),
 	receive 
 		stopped -> 
 			ok
@@ -56,7 +57,7 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 			random_forward_reverse_action_from_forward(
 				FirstProcess, 
 				InfoGraph, 
-				Steps) 
+				Steps)
 	end.
 
 random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) -> 
@@ -113,15 +114,23 @@ execute_csp({Exp, Parent}, Previous) ->
 				[] ->
 					% TODO: Should ask before if the user wants to undo or reverse.
 					io:format("This CSP expression cannot be further evaluated.\n"),
-					csp_reversible_lib:ask_questions(
-						[
-							{t, "See current trace."}, 
-							{c, "Print current track."}, 
-						 	{r, "Reverse evaluation."}, 
-						 	{f, "Finish evaluation."}
-						],
-						fun process_answer_exe/3,
-						[]);
+					Answer =
+						csp_reversible_lib:ask_questions(
+							[
+								{t, "See current trace."}, 
+								{c, "Print current track."}, 
+							 	{r, "Reverse evaluation."}, 
+							 	{u, "Undo."}, 
+							 	{f, "Finish evaluation."}
+							],
+							fun process_answer_exe/3,
+							[]),
+					case Answer of 
+						undo -> 
+							execute_undo({Exp, Parent}, Previous);
+						_ -> 
+							Answer
+					end;
 				_ ->
 					case Previous of 
 						0 -> 
@@ -136,6 +145,7 @@ execute_csp({Exp, Parent}, Previous) ->
 									{t, "See current trace."},
 									{c, "Print current track."},
 									{r, "Reverse evaluation."},
+									{u, "Undo."},
 									{f, "Finish evaluation."}
 								],
 							case csp_reversible_lib:ask_questions(
@@ -159,6 +169,8 @@ execute_csp({Exp, Parent}, Previous) ->
 								        	"\nHow many steps?\n[1..1000]: ", 
 								        	lists:seq(1, 1000)),
 									{forward_reverse, Steps};
+								undo -> 
+									execute_undo({Exp, Parent}, Previous);
 								Answer  ->
 									% io:format("Answer: ~p\n", [Answer]),
 									NExp = 
@@ -197,6 +209,51 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	end,
 	NExp.
 
+execute_undo({Exp, Parent}, Previous) -> 
+	csp_reversible_lib:send_message2regprocess(printer,{info_graph_no_stop, csp_reversible_lib:get_self()}),
+	receive 
+		{info_graph, {{_,_,_}, {NodesDigraph, EdgesDigraph}}} ->
+			Digraph = 
+				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+			Undoable = 
+				csp_reversible_backward:reverse_options(Digraph),
+			case Undoable of 
+				[] -> 
+					io:format("Nothing to undo.\n"),
+					digraph:delete(Digraph),
+					execute_csp({Exp, Parent}, Previous);
+				_ ->
+					csp_reversible_lib:send_message2regprocess(printer,{stop, csp_reversible_lib:get_self()}),
+					receive 
+						stopped -> 
+							ok
+					end,
+					{_,LastDone} = 
+						lists:max(
+							[{lists:max(Ns), Ns} 
+							|| Ns <- csp_reversible_backward:reverse_options(Digraph)]),
+					io:format("LastDone: ~w\n", [LastDone]),
+					ReverseOptionsReady = 
+						csp_reversible_backward:prepare_questions_reverse(get(first_process), [LastDone], Digraph),
+					[{NEvalInfo, Printed}] = 
+						ReverseOptionsReady,
+					io:format(
+						"\nUndone:\n~s\n", 
+						[Printed]),
+					{{_, NDigraphContent}, _} = 
+						NEvalInfo,
+					{NNodesDigraph, NEdgesDigraph} = 
+						NDigraphContent,
+					NDigraph = 
+						csp_tracker:build_digraph(NNodesDigraph, NEdgesDigraph),
+					digraph:delete(Digraph),
+					csp_reversible_backward:start_from_track_continue_user(
+						get(first_process), 
+						NDigraph, 
+						Previous)
+			end
+	end.
+
 execute_csp_random({Exp, Parent}, Options, Steps) -> 
 	{NExp, NSteps} = 
 		select_random_option({Exp, Parent}, Options, "", Steps),
@@ -226,25 +283,23 @@ select_random_option({Exp, Parent}, Options, AdditionalInfo, Steps) ->
 			{{Exp, Parent}, []}
 	end.
 
-
 process_answer_exe(t, RC, _) ->
 	csp_reversible_lib:send_message2regprocess(printer,{get_trace, csp_reversible_lib:get_self()}),
-	InfoGraph = 
-		receive 
-			{trace, Trace} ->
-				csp_reversible_lib:print_trace(Trace) 
-		end, 
+	receive 
+		{trace, Trace} ->
+			csp_reversible_lib:print_trace(Trace) 
+	end, 
 	RC();
 process_answer_exe(c, RC, _) ->
 	csp_reversible_lib:send_message2regprocess(printer,{info_graph_no_stop, csp_reversible_lib:get_self()}),
-	InfoGraph = 
-		receive 
-			{info_graph, {{_,_,_}, {NodesDigraph, EdgesDigraph}}} ->
-				Digraph = 
-					csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-				csp_tracker:print_from_digraph(Digraph, "current", [], false),
-				io:format("Current track available at current.pdf\n")
-		end, 
+	receive 
+		{info_graph, {{_,_,_}, {NodesDigraph, EdgesDigraph}}} ->
+			Digraph = 
+				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
+			csp_tracker:print_from_digraph(Digraph, "current", [], false),
+			digraph:delete(Digraph),
+			io:format("Current track available at current.pdf\n")
+	end, 
 	RC();
 process_answer_exe(r, _, _) ->
 	{reverse, []};
@@ -254,6 +309,8 @@ process_answer_exe(rf, _, _) ->
 	random_forward;
 process_answer_exe(rfr, _, _) ->
 	random_forward_reverse;
+process_answer_exe(u, _, _) ->
+	undo;
 process_answer_exe(Other, _, _) ->
 	Other.
 

@@ -1,0 +1,8 @@
+channel a, b, bp
+
+MAIN = P |~| Q
+
+P = a -> P ||| b -> P
+
+Q = a -> P |~| b -> P
+
