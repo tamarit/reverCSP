@@ -66,7 +66,32 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 					start_from_expr(FirstProcess, FirstExp, Previous);
 				_ -> 
 					execute_undo({UExp, UParent}, InfoGraph, UPrevious)
-			end
+			end;
+		{roll_back, {UExp, UParent}, GoalTrace} -> 
+			case InfoGraph of 
+				{{{0,0,0,_},"",""},{[],[]}} ->
+					io:format("Nothing to undo.\n"),
+					start_from_expr(FirstProcess, FirstExp, Previous);
+				{{_,_,Trace},_} -> 
+					case is_equal_trace_externals(Trace, GoalTrace) of 
+						true -> 
+							{{_,_,_}, {NodesDigraph, EdgesDigraph}}
+								= InfoGraph,
+							Digraph = 
+								csp_tracker:build_digraph(
+									NodesDigraph, 
+									EdgesDigraph),
+							csp_reversible_backward:start_from_track_continue_user(
+								FirstProcess, 
+								Digraph, 
+								[]);
+						false -> 
+							execute_undo(
+								{UExp, UParent}, 
+								InfoGraph, 
+								{roll_back, {UExp, UParent}, GoalTrace})
+					end
+			end	
 	end.
 
 random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) -> 
@@ -112,9 +137,10 @@ execute_csp({Exp, Parent}, Previous) ->
 						[csp_reversible_lib:csp2string(Exp)]),
 					{_, NSteps} = 
 						select_random_option({Exp, Parent}, Questions, "Forward evaluation. ", N),
-					% io:format("PASA1\n"),
 					{forward_reverse, NSteps}
 			end;
+		{roll_back, {UExp, UParent}, GoalTrace} -> 
+			{roll_back, {Exp, Parent}, GoalTrace};
 		_ -> 
 			io:format(
 				"\n\nCurrent expression:\n~s\n\n", 
@@ -130,6 +156,7 @@ execute_csp({Exp, Parent}, Previous) ->
 								{c, "Print current track."}, 
 							 	{r, "Reverse evaluation."}, 
 							 	{u, "Undo."}, 
+							 	{rb, "Roll back."},
 							 	{f, "Finish evaluation."}
 							],
 							fun process_answer_exe/3,
@@ -155,6 +182,7 @@ execute_csp({Exp, Parent}, Previous) ->
 									{c, "Print current track."},
 									{r, "Reverse evaluation."},
 									{u, "Undo."},
+									{rb, "Roll back."},
 									{f, "Finish evaluation."}
 								],
 							case csp_reversible_lib:ask_questions(
@@ -180,6 +208,29 @@ execute_csp({Exp, Parent}, Previous) ->
 									{forward_reverse, Steps};
 								undo -> 
 									{undo, {Exp, Parent}, Previous};
+								roll_back -> 
+									csp_reversible_lib:send_message2regprocess(
+										printer,
+										{get_trace, csp_reversible_lib:get_self()}),
+									receive 
+										{trace, Trace} ->
+											TraceExt = 
+												only_externals_trace(Trace),
+											% io:format("TraceExt: ~p", [TraceExt]),
+											io:format("\nChoose an element of the trace.\n"), 
+											AnswersRollBack = 
+												lists:zip(
+													lists:seq(1, length(TraceExt)),
+													TraceExt),
+											csp_reversible_lib:ask_questions(
+												AnswersRollBack, 
+												fun(Answer, _, _) ->
+													GoalTrace = 
+														lists:sublist(TraceExt, 1, Answer),
+													{roll_back, {Exp, Parent}, GoalTrace}
+												end,
+												[]) 
+									end;
 								Answer  ->
 									% io:format("Answer: ~p\n", [Answer]),
 									NExp = 
@@ -202,21 +253,61 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	case Answer of 
 		[_|_] -> 
 			csp_reversible_lib:build_sync_edges(lists:flatten([N || {N, _} <- NNodes]));
-			% io:format("~p\n", [lists:seq(1, length(NNodes) - 1)]),
-			% [ begin
-			% 	csp_reversible_lib:send_message2regprocess(
-			% 		printer,
-			% 		{unprint_last, csp_reversible_lib:get_self()}),
-			% 	receive
-			% 		unprinted_last ->
-			% 			ok
-			% 	end
-			%  end
-			% || _ <- lists:seq(1, length(NNodes) - 1)];
 		_ ->
 			ok
 	end,
 	NExp.
+
+
+only_externals_trace(Trace) ->
+	Events = 
+		string:tokens(Trace, "\n"),
+	FilteredTrace = 
+		lists:filter(
+			fun(E) -> 
+				case E of 
+					[[$ ,$ ,$ |_]] -> 
+						false;
+					_ -> 
+						true
+				end
+			end,
+			Events),
+	lists:map(
+		fun([E]) -> E end,
+		FilteredTrace).
+
+before_external_trace(Trace) -> 
+	Events = 
+		lists:reverse(string:tokens(Trace, "\n")),
+	{_, LastTrace} = 
+		lists:foldl(
+			fun
+				(E, {true, Acc}) -> 
+					{true, Acc};
+				(E, {false, Acc}) -> 
+					case E of 
+						[[$ ,$ ,$ |_]] -> 
+							{false, [E | Acc]};
+						_ -> 
+							{true, Acc}
+					end
+			end,
+			{false, []},
+			Events),
+	lists:map(
+		fun([E]) -> E end,
+		LastTrace).
+
+is_equal_trace_externals(Trace, GoalTrace) ->
+	% io:format("BET: ~p\n", [before_external_trace(Trace)]),
+	case only_externals_trace(Trace) ++ before_external_trace(Trace) of 
+		GoalTrace ->
+			true;
+		_ -> 
+			false 
+	end.
+
 
 execute_undo({Exp, Parent}, InfoGraph, Previous) ->
 	{{_,_,_}, {NodesDigraph, EdgesDigraph}}
@@ -313,6 +404,8 @@ process_answer_exe(rfr, _, _) ->
 	random_forward_reverse;
 process_answer_exe(u, _, _) ->
 	undo;
+process_answer_exe(rb, _, _) ->
+	roll_back;
 process_answer_exe(Other, _, _) ->
 	Other.
 

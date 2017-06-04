@@ -1,4 +1,4 @@
-- go back to certain element of the trace -> by undoing things till the trace (only externals) are equal.
+- Optional: add an option to show only the external events ogf the trace
 - Optional: Padding for options when there is more than 10 options
 - Optional: We want 3 types of breakpoints (forth, back, both) or only one?
 - Optional: allow the internal choice as option in reverse evaluation. 
