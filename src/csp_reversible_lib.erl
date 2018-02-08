@@ -201,6 +201,7 @@ print_trace(Trace) ->
 		[Trace]).
 
 ask_questions(List, ProcessAnswer, Data) ->
+	% io:format("~p\n", [{List, ProcessAnswer, Data}]),
 	{FAnswer, FAnsDict} = 
 		case lists:last(List) of 
 			% To place finish option allways in the number 0

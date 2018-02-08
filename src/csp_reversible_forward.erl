@@ -70,8 +70,9 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 		{roll_back, {UExp, UParent}, GoalTrace} -> 
 			case InfoGraph of 
 				{{{0,0,0,_},"",""},{[],[]}} ->
-					io:format("Nothing to undo.\n"),
-					start_from_expr(FirstProcess, FirstExp, Previous);
+					io:format("Nothing to undo.\n"), % looping forever
+					% start_from_expr(FirstProcess, FirstExp, Previous);
+					start_from_expr(FirstProcess, FirstExp, []);
 				{{_,_,Trace},_} -> 
 					case is_equal_trace_externals(Trace, GoalTrace) of 
 						true -> 
@@ -217,19 +218,24 @@ execute_csp({Exp, Parent}, Previous) ->
 											TraceExt = 
 												only_externals_trace(Trace),
 											% io:format("TraceExt: ~p", [TraceExt]),
-											io:format("\nChoose an element of the trace.\n"), 
 											AnswersRollBack = 
 												lists:zip(
 													lists:seq(1, length(TraceExt)),
 													TraceExt),
-											csp_reversible_lib:ask_questions(
-												AnswersRollBack, 
-												fun(Answer, _, _) ->
-													GoalTrace = 
-														lists:sublist(TraceExt, 1, Answer),
-													{roll_back, {Exp, Parent}, GoalTrace}
-												end,
-												[]) 
+											case AnswersRollBack of 
+												[_|_] ->
+													io:format("\nChoose an element of the trace.\n"), 
+													csp_reversible_lib:ask_questions(
+														AnswersRollBack, 
+														fun(Answer, _, _) ->
+															GoalTrace = 
+																lists:sublist(TraceExt, 1, Answer),
+															{roll_back, {Exp, Parent}, GoalTrace}
+														end,
+														[]);
+												[] ->
+													{roll_back, {[], []}, []}
+											end
 									end;
 								Answer  ->
 									% io:format("Answer: ~p\n", [Answer]),
@@ -273,8 +279,12 @@ only_externals_trace(Trace) ->
 				end
 			end,
 			Events),
+	% io:format("~p\n", [FilteredTrace]),
 	lists:map(
-		fun([E]) -> E end,
+		fun
+			([E]) -> E;
+			(E) -> E
+		end,
 		FilteredTrace).
 
 before_external_trace(Trace) -> 
@@ -301,7 +311,9 @@ before_external_trace(Trace) ->
 
 is_equal_trace_externals(Trace, GoalTrace) ->
 	% io:format("BET: ~p\n", [before_external_trace(Trace)]),
-	case only_externals_trace(Trace) ++ before_external_trace(Trace) of 
+	% io:format("~p\n", [{only_externals_trace(Trace) ++ before_external_trace(Trace), GoalTrace}]),
+	% case only_externals_trace(Trace) ++ before_external_trace(Trace) of 
+	case only_externals_trace(Trace) of 
 		GoalTrace ->
 			true;
 		_ -> 

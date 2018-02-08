@@ -43,10 +43,13 @@ run7:
 run8:
 	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex8.csp -noshell -s erlang halt
 
+run9:
+	erl -pa ebin csp_tracker/ebin -run csp_reversible run examples/ex9.csp -noshell -s erlang halt
+
 update_sm:
 	@cd csp_tracker; git checkout master && git pull
 	@git add csp_tracker
-	@git commit -m "updating csp_tracker to latest"
+	@git commit -m "updated csp_tracker repository to latest"
 	@git push
 
 # install:

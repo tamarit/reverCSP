@@ -1,0 +1,6 @@
+channel a1, b1, c1, d, e1, f1, a2, b2, c2, e2, f2, bp
+
+MAIN = P [|{|d|}|] Q
+
+P = a1 -> b1 -> c1 -> bp -> d -> e1 -> f1 -> SKIP
+Q = a2 -> b2 -> c2 -> d -> bp -> e2 -> f2 -> SKIP
