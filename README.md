@@ -31,7 +31,7 @@ reverCSP optionally requires [graphviz](https://www.graphviz.org/) to produce PD
 
 * Mac OSX
 
-        brew cask install graphviz
+        $ brew cask install graphviz
         
 Finally, when all previous steps are done, thhe following command should be run:
 
