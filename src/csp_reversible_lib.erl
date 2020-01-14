@@ -18,7 +18,8 @@
 			ask_questions/3,
 			get_answer/2,
 			build_sync_edges/1,
-			build_str_tuples/1
+			build_str_tuples/1,
+			move/2
 		]).
 
 csp2string({prefix, _, _, Event, ProcessPrefixing, _}) ->
@@ -297,3 +298,10 @@ build_sync_edges(_) ->
 
 build_str_tuples(List) ->
 	[{E, csp_reversible_lib:csp2string(E)} || E <- List].
+
+move(Source, Destination)->
+    %% For Windows
+    % Command = "MOVE \"" ++ Source ++ "\" \"" ++ Destination ++ "\"",
+    %% For Unix/Linux
+    Command = "mv \"" ++ Source ++ "\" \"" ++ Destination ++ "\"",
+    spawn(os, cmd, [Command]).
