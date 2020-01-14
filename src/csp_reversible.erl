@@ -56,6 +56,9 @@ run(File, FirstProcess) ->
 					TrackStr = 
 						io_lib:format("~p.\n~p.\n", [NodesDigraph, EdgesDigraph]),
 					file:write_file("track.txt", list_to_binary(TrackStr)),
+					csp_reversible_lib:move("track.pdf", "output/track.pdf"),
+					csp_reversible_lib:move("track.dot", "output/track.dot"),
+					csp_reversible_lib:move("track.txt", "output/track.txt"),
 					% read_from_track(FirstProcess, Digraph),
 					csp_process:send_message2regprocess(codeserver, stop),
 					ok
