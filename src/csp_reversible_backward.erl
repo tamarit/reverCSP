@@ -24,7 +24,9 @@ start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphCo
 		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
 	FunPrintCurrentTrack = 
 		fun () -> 
-			csp_tracker:print_from_digraph(Digraph, "current", [], false)
+			csp_tracker:print_from_digraph(Digraph, "current", [], false),
+			csp_reversible_lib:move("current.pdf", "output/current.pdf"),
+			csp_reversible_lib:move("current.dot", "output/current.dot")
 		end,
 	% csp_tracker:print_from_digraph(Digraph, "current2", [], false),
 	% process_answer_reverse(t, fun() -> ok end, {Trace,0}),
@@ -232,7 +234,7 @@ process_answer_reverse(t, RC, {Trace,_}) ->
 	RC();
 process_answer_reverse(c, RC, {_,PT}) ->
 	PT(),
-	io:format("Current track available at current.pdf\n"),
+	io:format("Current track available at output/current.pdf\n"),
 	RC();
 process_answer_reverse(e, _, _) ->
 	forward;

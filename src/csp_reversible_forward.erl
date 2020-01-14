@@ -403,7 +403,9 @@ process_answer_exe(c, RC, _) ->
 				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
 			csp_tracker:print_from_digraph(Digraph, "current", [], false),
 			digraph:delete(Digraph),
-			io:format("Current track available at current.pdf\n")
+			csp_reversible_lib:move("current.pdf", "output/current.pdf"),
+			csp_reversible_lib:move("current.dot", "output/current.dot"),
+			io:format("Current track available at output/current.pdf\n")
 	end, 
 	RC();
 process_answer_exe(r, _, _) ->
