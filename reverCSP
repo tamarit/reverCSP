@@ -1,0 +1,3 @@
+#!/bin/bash
+
+erl -pa ebin csp_tracker/ebin -run csp_reversible run $1 -noshell -s erlang halt
