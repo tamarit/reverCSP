@@ -66,7 +66,7 @@ Once thhe image is created, you can up a container using the following command:
 
     $ docker run --name csp -it -v $PWD/examples:/reverCSP/examples -v $PWD/output:/reverCSP/output --rm revercsp
 
-Once inside the container the usage as described in [Usage](#usage). The on-host examples folder can be used to modify or add new examples, while the on-host output folder will contain the tracks produced inside the container.
+Once inside the container the usage is as it is described in [Usage](#usage). The on-host examples folder can be used to modify or add new examples, while the on-host output folder will contain the tracks produced inside the container.
 
 Usage
 =====
