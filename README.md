@@ -1,6 +1,6 @@
 # reverCSP
 
-reverCSP is a tool that allows to compute CSP specification in both ways, i.e. forward (traditional computation) and backwards (using our reversible computation framework). reverCSP uses internally [csp_tracker](https://github.com/mistupv/csp_tracker) to produce tracks of the computation so one can better follows whhat is being computed so far (or henceforth if going backwards). 
+reverCSP is a tool that allows us to evaluate a CSP specification in both directions: forwards (traditional computation) and backwards (using our reversible computation framework). reverCSP uses internally [csp_tracker](https://github.com/mistupv/csp_tracker) to produce tracks of the computation so one can better follows what is being computed so far (or henceforth if going backwards). 
 
 Table of contents
 =================
@@ -14,7 +14,7 @@ Table of contents
 Installation
 ============
 
-reverCSP is built using Erlang and its installation is mandatory in order to run the tool. You can install it using:
+reverCSP is built using Erlang, thus, its installation is mandatory to run the tool. You can install it using:
 
 * Ubuntu
 
@@ -33,7 +33,7 @@ reverCSP optionally requires [graphviz](https://www.graphviz.org/) to produce PD
 
         $ brew cask install graphviz
         
-Finally, when all previous steps are done, thhe following command should be run:
+Finally, when all previous steps are done, the following command should be run:
 
 * Ubuntu
 
@@ -58,11 +58,11 @@ Finally, when all previous steps are done, thhe following command should be run:
 Docker
 ======
 
-We also provide a Dockerfile in case all previous steps are not available in your current environment. To build the docker image run the follwing command: 
+We also provide a Dockerfile in case all previous steps are not available in your current environment. To build the docker image run the following command: 
 
     $ docker build -t revercsp .
     
-Once thhe image is created, you can up a container using the following command:
+Once the image is created, you can run a container using the following command:
 
     $ docker run --name csp -it -v $PWD/examples:/reverCSP/examples -v $PWD/output:/reverCSP/output --rm revercsp
 
@@ -71,6 +71,6 @@ Once inside the container the usage is as it is described in [Usage](#usage). Th
 Usage
 =====
 
-The reverCSP tool needs a CSP specification as input. We can run the tool with the chosen CSP specficiation (e.g. examples/ex1.csp) using the following command:
+The reverCSP tool needs a CSP specification as input. We can run the tool with the chosen CSP specification (e.g. examples/ex1.csp) using the following command:
 
     $ ./reverCSP examples/ex1.csp
