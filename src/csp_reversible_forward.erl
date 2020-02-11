@@ -26,7 +26,6 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 	InfoGraph = 
 		receive 
 			{info_graph, InfoGraph_} ->
-				% io:format("~p\n", [InfoGraph_]),
 				InfoGraph_
 		after 
 			1000 -> 
@@ -44,11 +43,9 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 		{reverse, Pending} -> 
 			{{_,_,_}, {NodesDigraph, EdgesDigraph}}
 				= InfoGraph,
-			% io:format("EdgesDigraph: ~p\n", [EdgesDigraph]),
-			Digraph = 
+			Digraph =
 				csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
-			% csp_tracker:print_from_digraph(Digraph, "current1_1", [], false),
-			EvalInfo = 
+			EvalInfo =
 				csp_reversible_backward:start_from_track(FirstProcess, Digraph),
 			csp_reversible_backward:start_reverse_mode(
 				FirstProcess, 
@@ -98,7 +95,6 @@ start_from_expr(FirstProcess, FirstExp, Previous) ->
 random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) -> 
 	EvalOrder = 
 		csp_reversible_lib:decide_eval_order(),
-	% io:format("Selected ~p mode.", [EvalOrder]),
 	{{_,_,_}, {NodesDigraph, EdgesDigraph}}
 		= InfoGraph,
 	Digraph = 
@@ -126,8 +122,7 @@ random_forward_reverse_action_from_forward(FirstProcess, InfoGraph, Steps) ->
 
 execute_csp({Exp, Parent}, Previous) ->
 	Questions = get_questions(Exp, []),
-	% io:get_line(standard_io, format("****State****\n~s\n****Options****\n~s\n************\n", [csp_reversible_lib:csp2string(Exp), lists:join("\n", [ csp_reversible_lib:csp2string(Q) || Q <- Questions])])),
-	case Previous of 
+	case Previous of
 		{forward_reverse, N} when is_integer(N) andalso N > 0 -> 
 			case Questions of 
 				[] -> 
@@ -136,11 +131,11 @@ execute_csp({Exp, Parent}, Previous) ->
 					io:format(
 						"\n\nCurrent expression:\n~s\n\n", 
 						[csp_reversible_lib:csp2string(Exp)]),
-					{_, NSteps} = 
+					{_, NSteps} =
 						select_random_option({Exp, Parent}, Questions, "Forward evaluation. ", N),
 					{forward_reverse, NSteps}
 			end;
-		{roll_back, {UExp, UParent}, GoalTrace} -> 
+		{roll_back, {_UExp, _UParent}, GoalTrace} ->
 			{roll_back, {Exp, Parent}, GoalTrace};
 		_ -> 
 			io:format(
@@ -217,8 +212,7 @@ execute_csp({Exp, Parent}, Previous) ->
 										{trace, Trace} ->
 											TraceExt = 
 												only_externals_trace(Trace),
-											% io:format("TraceExt: ~p", [TraceExt]),
-											AnswersRollBack = 
+											AnswersRollBack =
 												lists:zip(
 													lists:seq(1, length(TraceExt)),
 													TraceExt),
@@ -238,8 +232,7 @@ execute_csp({Exp, Parent}, Previous) ->
 											end
 									end;
 								Answer  ->
-									% io:format("Answer: ~p\n", [Answer]),
-									NExp = 
+									NExp =
 										csp_process_option_processing(
 											Exp, 
 											Answer, 
@@ -254,9 +247,7 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 	put(in_parallelism, false),
 	{NExp, NNodes} = 
 		process_answer(Exp, Answer, Parent),
-	% io:format("{Exp, Answer, Parent}: ~p\n", [{Exp, Answer, Parent}]),
-	% io:format("{NExp, NNodes}: ~p\n", [{NExp, NNodes}]),
-	case Answer of 
+	case Answer of
 		[_|_] -> 
 			csp_reversible_lib:build_sync_edges(lists:flatten([N || {N, _} <- NNodes]));
 		_ ->
@@ -279,7 +270,6 @@ only_externals_trace(Trace) ->
 				end
 			end,
 			Events),
-	% io:format("~p\n", [FilteredTrace]),
 	lists:map(
 		fun
 			([E]) -> E;
@@ -293,7 +283,7 @@ before_external_trace(Trace) ->
 	{_, LastTrace} = 
 		lists:foldl(
 			fun
-				(E, {true, Acc}) -> 
+				(_E, {true, Acc}) ->
 					{true, Acc};
 				(E, {false, Acc}) -> 
 					case E of 
@@ -338,8 +328,7 @@ execute_undo({Exp, Parent}, InfoGraph, Previous) ->
 				lists:max(
 					[{lists:max(Ns), Ns} 
 					|| Ns <- csp_reversible_backward:reverse_options(Digraph)]),
-			% io:format("LastDone: ~w\n", [LastDone]),
-			ReverseOptionsReady = 
+			ReverseOptionsReady =
 				csp_reversible_backward:prepare_questions_reverse(get(first_process), [LastDone], Digraph),
 			[{NEvalInfo, Printed}] = 
 				ReverseOptionsReady,
@@ -433,26 +422,26 @@ process_answer_exe(Other, _, _) ->
 % Cuando se llegue a ser skip el primer proceso entonces se quita. Igual debería de guardarse en un skip especial o algo así los nodos para saber a que tiene que unirse. i.e. process_answer({skip, SPAN}, _) -> SE DIBUJA SKIP y se devuelve {skip, SPAN, [nodo_skip]}.
 % Cuando un paralslismo acaben los dos con {skip,_,_}, meter un {skip, SPAN, Nods_skip}.
 % El SC cuando se encuntre que su primer proceso se evalue a esto, se unira a los acabados y desaparecerá
-get_questions({prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN2}, Renamings) ->
+get_questions({prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN2}, _Renamings) ->
 	[{prefix,SPAN1,Channels,Event,ProcessPrefixing,SPAN2}];
-get_questions({'|~|', PA, PB, SPAN}, Renamings) ->
+get_questions({'|~|', PA, PB, SPAN}, _Renamings) ->
 	[{'|~|', PA, PB, SPAN}];
 % El external choice se queda sempre que al processar les rames no cambien. Si cambien y el que s'ha llançat era un event (no tau o tick) aleshores llevem el external choice i deixem la rama que ha canviat.
-get_questions({agent_call, SPAN, ProcessName, Arguments}, Renamings) ->
+get_questions({agent_call, SPAN, ProcessName, Arguments}, _Renamings) ->
 	[{agent_call, SPAN, ProcessName, Arguments}];
-get_questions({'|||', PA, PB, SPAN}, Renamings) ->
+get_questions({'|||', PA, PB, _SPAN}, Renamings) ->
 	get_questions(PA, Renamings) ++ get_questions(PB, Renamings);
-get_questions({'|||', PA, PB, _, _, SPAN}, Renamings) ->
+get_questions({'|||', PA, PB, _, _, _SPAN}, Renamings) ->
 	get_questions(PA, Renamings) ++ get_questions(PB, Renamings);
-get_questions({sharing, {closure, Events}, PA, PB, SPAN}, Renamings) ->
+get_questions({sharing, {closure, Events}, PA, PB, _SPAN}, Renamings) ->
 	get_questions_sharing({Events, PA, PB}, Renamings);
-get_questions({sharing, {closure, Events}, PA, PB, _, _, SPAN}, Renamings) ->
+get_questions({sharing, {closure, Events}, PA, PB, _, _, _SPAN}, Renamings) ->
 	get_questions_sharing({Events, PA, PB}, Renamings);
 get_questions({';', PA, _, _}, Renamings) -> 
 	get_questions(PA, Renamings);
-get_questions({skip, SPAN}, Renamings) ->
+get_questions({skip, _SPAN}, _Renamings) ->
 	[];
-get_questions({finished_skip, _, _}, Renamings) ->
+get_questions({finished_skip, _, _}, _Renamings) ->
 	[].
 
 get_questions_sharing({Events, PA, PB}, Renamings) -> 
@@ -491,9 +480,9 @@ get_questions_sharing({Events, PA, PB}, Renamings) ->
 							{[_|_], [_|_]} -> 
 								PrefA ++ PrefB;
 							{[_|_], _} -> 
-								[PrefB | PrefA];
+								[PrefB | PrefA];
 							{_, [_|_]} -> 
-								[PrefA | PrefB];
+								[PrefA | PrefB];
 							_ -> 
 								[PrefA, PrefB]
 						 end
@@ -501,10 +490,7 @@ get_questions_sharing({Events, PA, PB}, Renamings) ->
 			end,
 			[],
 			PrefSyncA),
-	% io:format("PrefSync: ~w\n", [PrefSync]),
-	% io:format("PrefNotSync: ~w\n", [PrefNotSync]),
 	Opts = NotPref ++ [Pref || {_, Pref} <- PrefNotSync] ++ PrefSync,
-	% io:format("Opts: ~p\n", [Opts]),
 	Opts.
 
 
@@ -514,7 +500,7 @@ get_questions_sharing({Events, PA, PB}, Renamings) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L = [_|_], Parent) ->
+process_answer(P = {prefix, _SPAN1, _Channels, Event, ProcessPrefixing, _SPAN}, L = [_|_], Parent) ->
 	case lists:member(P, L) of 
 		true ->
 			case get(in_parallelism) of 
@@ -535,7 +521,7 @@ process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, L =
 		false -> 
 			{{P, Parent}, []}
 	end;
-process_answer(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, P, Parent) ->
+process_answer(P = {prefix, _SPAN1, _Channels, Event, ProcessPrefixing, _SPAN}, P, Parent) ->
 	case get(in_parallelism) of 
 		false -> 
 			csp_reversible_lib:print_event(Event);
@@ -582,7 +568,7 @@ process_answer(P = {'|~|', PA, PB, SPAN}, P, Parent) ->
 				process_answer(Selected, P, NParent),
 			{NExp, NNodes}
 	end;
-process_answer(P = {agent_call, SPAN, ProcessName, Arguments}, P, Parent) ->
+process_answer(P = {agent_call, _SPAN, ProcessName, Arguments}, P, Parent) ->
 	csp_reversible_lib:send_message2regprocess(codeserver, {ask_code, ProcessName, Arguments, csp_reversible_lib:get_self()}),
 	NCode = 
 		receive
@@ -687,7 +673,7 @@ process_answer(P = {skip, SPAN}, _, Parent) ->
 		{created, NParent} ->
 			{{{finished_skip, SPAN, [NParent]}, NParent}, []}
 	end;
-process_answer(P, Ans, Parent) ->
+process_answer(P, _Ans, Parent) ->
 	{{P, Parent}, []}.
 
 process_answer_interleaving({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN) -> 
@@ -748,9 +734,7 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 			false -> 
 				case {NPA /= PA, NPB /= PB} of 
 					{true, true} ->  
-						% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
-						% io:format("DIFF: ~p\n", [NNodesA ++ NNodesB]),
-						case (NNodesA ++ NNodesB) of 
+						case (NNodesA ++ NNodesB) of
 							[] -> 
 								ok;
 							_ -> 
@@ -759,9 +743,7 @@ process_answer_sharing({PA, ParentA}, {PB, ParentB}, P, Parent, SPAN, Events) ->
 								csp_reversible_lib:print_event(EventToPrint)
 						end;
 					_ -> 
-						% io:format("A: ~p\nB: ~p\n", [{PA, NPA}, {PB, NPB}]),
-						% io:format("SAME: ~p\n", [NNodesA ++ NNodesB]),
-						EventsToPrint = 
+						EventsToPrint =
 							[E || {_, E} <- lists:sort(NNodesA ++ NNodesB)],
 						[csp_reversible_lib:print_event(Event) || Event <- EventsToPrint]
 				end,

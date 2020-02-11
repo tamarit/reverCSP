@@ -29,22 +29,22 @@ csp2string({'|~|', PA, PB, _}) ->
 % El external choice se queda sempre que al processar les rames no cambien. Si cambien y el que s'ha llançat era un event (no tau o tick) aleshores llevem el external choice i deixem la rama que ha canviat.
 csp2string({agent_call, _, ProcessName, Arguments}) ->
 	atom_to_list(ProcessName) ++ printer:string_arguments(Arguments);
-csp2string({'|||', PA, PB, SPAN}) ->
+csp2string({'|||', PA, PB, _SPAN}) ->
 	brackets(csp2string(PA) ++ " ||| " ++ csp2string(PB));
-csp2string({'|||', PA, PB, _, _, SPAN}) ->
+csp2string({'|||', PA, PB, _, _, _SPAN}) ->
 	brackets(csp2string(PA) ++ " ||| " ++ csp2string(PB));
 csp2string({sharing, {closure, Events}, PA, PB, _}) ->
 	brackets(csp2string(PA) ++ " [|{|" ++ events_to_str(Events) ++ "|}|] " ++ csp2string(PB));
 csp2string({sharing, {closure, Events}, PA, PB, _, _, _}) ->
 	brackets(csp2string(PA) ++ " [|{|" ++ events_to_str(Events) ++ "|}|] " ++ csp2string(PB));
-csp2string({skip, SPAN}) ->
+csp2string({skip, _SPAN}) ->
 	"SKIP";
 csp2string({';', PA, PB, _}) ->
 	brackets(csp2string(PA))++ ";" ++ brackets(csp2string(PB));
 csp2string({finished_skip, _, _}) ->
 	"T";
 csp2string(L = [_|_]) ->
-	"\t" ++ string:join([csp2string(E) || E <- L], "\n\t");
+	"\t" ++ string:join([csp2string(E) || E <- L], "\n\t");
 csp2string(Other) ->
 	io:format("Other: ~p\n", [Other]).
 
@@ -100,14 +100,14 @@ get_self() ->
 	catch self().
 
 get_leaves(G) ->
-	[V || V <- digraph:vertices(G), digraph:out_degree(G, V) == 0].
+	[V || V <- digraph:vertices(G), digraph:out_degree(G, V) == 0].
 
 % search_root(G) ->
 % 	hd([V || V <- digraph:vertices(G), digraph:in_degree(G, V) == 0]).
 
 get_max_vertex(G) ->
 	% io:format("~p\n", [digraph:vertices(G)]),
-	lists:max([V || V <- digraph:vertices(G)]).
+	lists:max([V || V <- digraph:vertices(G)]).
 
 % extract_span({prefix, SPAN, _, _, _, _}) ->
 % 	SPAN;
@@ -135,7 +135,7 @@ same_span(SPAN, Track, Current, Parent, Dict) ->
 				Inputs = 
 					lists:concat(
 						[begin
-							{E, From, To, Type} = 
+							{E, From, _To, Type} =
 								digraph:edge(Track, E),
 							case Type of 
 								"control" -> 
@@ -179,7 +179,7 @@ register_printer() ->
 	     true -> 
 	     	ok;
 	     false -> 
-	     	Self = self(),
+	     	_Self = self(),
 	     	register(
 	     		printer, 
 		        spawn(printer,loop,
@@ -217,13 +217,13 @@ ask_questions(List, ProcessAnswer, Data) ->
 						lists:last(List), 
 						{0, Lines0, Ans0, AnsDict0}),
 			    QuestionLines = 
-			        ["These are the available options: " | lists:reverse(Lines)]
-			    ++  ["What do you want to do?" 
+			        ["These are the available options: " | lists:reverse(Lines)]
+			    ++  ["What do you want to do?"
 			         | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
 			    Answer = 
 			        get_answer(
 			        	string:join(QuestionLines,"\n"), 
-			        	[0 | lists:seq(1, length(Ans) - 1)]),
+			        	[0 | lists:seq(1, length(Ans) - 1)]),
 			    {Answer, AnsDict};
 			% When there is no finish
 			_ -> 
@@ -233,7 +233,7 @@ ask_questions(List, ProcessAnswer, Data) ->
 				        {1, [], [], dict:new()}, 
 				        List),
 			    QuestionLines = 
-			        ["These are the available options: " | lists:reverse(Lines)]
+			        ["These are the available options: " | lists:reverse(Lines)]
 			    ++  ["What do you want to do?" 
 			         | ["[" ++ string:join(lists:reverse(Ans), "/") ++ "]: "]],
 			    Answer = 
@@ -253,7 +253,7 @@ build_question_option({O, Name}, {N, Lines, Answers, Dict}) ->
     {
     	N + 1, 
     	NLines, 
-    	[csp_reversible_lib:format("~p", [N]) | Answers], 
+    	[csp_reversible_lib:format("~p", [N]) | Answers],
     	dict:store(N, O, Dict)
     };
 build_question_option(Other, {N, Lines, Answers, Dict}) ->
@@ -297,7 +297,7 @@ build_sync_edges(_) ->
 
 
 build_str_tuples(List) ->
-	[{E, csp_reversible_lib:csp2string(E)} || E <- List].
+	[{E, csp_reversible_lib:csp2string(E)} || E <- List].
 
 move(Source, Destination)->
     %% For Windows

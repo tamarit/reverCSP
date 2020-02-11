@@ -16,11 +16,9 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 start_reverse_mode(FirstProcess, EvalInfo = {InfoTrack = {{_,_,Trace}, DigraphContent}, ResExp}, Previous) ->
-	% io:format("Previous: ~p\n", [Previous]),
-	{NodesDigraph, EdgesDigraph} = 
+	{NodesDigraph, EdgesDigraph} =
 		DigraphContent,
-	% io:format("DigraphContent: ~p\n", [DigraphContent]),
-	Digraph = 
+	Digraph =
 		csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
 	FunPrintCurrentTrack = 
 		fun () -> 
@@ -196,7 +194,7 @@ select_random_option(Options, EvalInfo, AdditionalInfo, Digraph, Steps) ->
 	digraph:delete(Digraph),
 	{NEvalInfo, NSteps}.
 
-prepare_questions_reverse(FirstProcess, [H | T], G) ->
+prepare_questions_reverse(FirstProcess, [H | T], G) ->
 	NG = csp_reversible_lib:copy_digraph(G),
 	Ns = 
 		case is_list(H) of 
@@ -225,7 +223,7 @@ prepare_questions_reverse(FirstProcess, [H | T], G) ->
 			NodeStr ++ "\n\t\\__ "  
 		++ 	csp_reversible_lib:csp2string(ResExp),
 	[ 	{Result, Printed} 
-	| 	prepare_questions_reverse(FirstProcess, T, G)];
+	| 	prepare_questions_reverse(FirstProcess, T, G)];
 prepare_questions_reverse(_, [], _) ->
 	[].
 
@@ -260,7 +258,7 @@ start_from_track_continue_user(FirstProcess, Track, Previous) ->
 		{agent_call,{src_span,0,0,0,0,0,0},FirstProcess,[]},
 	try digraph:vertices(Track) of 
 		[_|_] ->
-			{NExp, NNodes} = 
+			{NExp, _NNodes} =
 				execute_csp_from_track(
 					{FirstExp, -1}, 
 					Track, 
@@ -288,7 +286,7 @@ start_from_track(FirstProcess, Track) ->
 		case digraph:vertices(Track) of 
 			[_|_] ->
 				% io:format("INIT ~p\n", [csp_reversible_lib:get_max_vertex(Track) + 1]),
-				{NExp, NNodes} = 
+				{NExp, _NNodes} =
 					execute_csp_from_track({FirstExp, -1}, Track, 0, csp_reversible_lib:get_max_vertex(Track) + 1, []),
 				% io:format("FINAL NNodes2: ~w\n", [NNodes]),
 				csp_reversible_lib:send_message2regprocess(printer, {info_graph_no_stop, csp_reversible_lib:get_self()}),
@@ -332,7 +330,7 @@ execute_csp_from_track({Exp, Parent}, Track, Current, Top, Dict) ->
 			execute_csp_from_track(NExpParent, Track, NCurrent, Top, NDict)
 	end.
 
-process_answer_from_track(P = {prefix, SPAN1, Channels, Event, ProcessPrefixing, SPAN}, Parent, Track, Dict, Current) ->
+process_answer_from_track(P = {prefix, SPAN1, _Channels, Event, ProcessPrefixing, _SPAN}, Parent, Track, Dict, Current) ->
 	% io:format("Entra: ~p\n", [{Current, P}]),
 	% case (csp_reversible_lib:same_span(SPAN1, Track, Current) or csp_reversible_lib:same_span(SPAN, Track, Current)) of 
 	case (csp_reversible_lib:same_span(SPAN1, Track, Current, Parent, Dict)) of 
@@ -416,7 +414,7 @@ process_answer_from_track(P = {'|~|', PA, PB, SPAN}, Parent, Track, Dict, Curren
 									Selected, 
 									NParent, 
 									Track, 
-									[{Current, NParent} | Dict],
+									[{Current, NParent} | Dict],
 									Current + 1),
 							{Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}], NDict}
 							% {{Selected, NParent}, Current + 1, [{Current, NParent, Event}], [{Current, NParent} | Dict]}
@@ -454,7 +452,7 @@ process_answer_from_track(P = {agent_call, SPAN, ProcessName, Arguments}, Parent
 							NCode, 
 							NParent, 
 							Track, 
-							[{Current, NParent} | Dict],
+							[{Current, NParent} | Dict],
 							Current + 1),
 					{Nexp, NCurrent, NNodes ++ [{Current, NParent, Event}], NDict}
 					% {{NCode, NParent}, Current + 1, [{Current, NParent, Event}],  [{Current, NParent} | Dict]}
@@ -480,11 +478,11 @@ process_answer_from_track(IL = {'|||', PA, PB, SPAN}, Parent, Track, Dict, Curre
 				Current + 1,
 				NParent,
 				SPAN,
-				[{Current, NParent} | Dict]);
+				[{Current, NParent} | Dict]);
 		false -> 
 			{{IL, Parent}, Current, [], Dict}
 	end;
-process_answer_from_track(P = {'|||', PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Dict, Current) ->
+process_answer_from_track(_P = {'|||', PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Dict, Current) ->
 	process_answer_from_track_interleaving(
 		{PA, ParentA}, 
 		{PB, ParentB}, 
@@ -512,11 +510,11 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, SPAN}, Paren
 				NParent,
 				SPAN,
 				Events,
-				[{Current, NParent} | Dict]);
+				[{Current, NParent} | Dict]);
 		false -> 
 			{{IL, Parent}, Current, [], Dict}
 	end;
-process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Dict, Current) ->
+process_answer_from_track(_IL = {sharing, {closure, Events}, PA, PB, ParentA, ParentB, SPAN}, Parent, Track, Dict, Current) ->
 	process_answer_from_track_sharing(
 		{PA, ParentA}, 
 		{PB, ParentB}, 
@@ -526,7 +524,7 @@ process_answer_from_track(IL = {sharing, {closure, Events}, PA, PB, ParentA, Par
 		SPAN,
 		Events,
 		Dict);
-process_answer_from_track(P = {';', PA, PB, SPAN}, Parent, Track, Dict, Current) ->
+process_answer_from_track(_P = {';', PA, PB, SPAN}, Parent, Track, Dict, Current) ->
 	{{NPA, NParentA}, NCurrent0, NNodesA, NDict0}  = 
 		process_answer_from_track(PA, Parent, Track, Dict, Current), 
 	{NSC_NParent, NCurrent, NDict} = 
@@ -613,7 +611,7 @@ process_answer_from_track_sharing(
 	% io:format("~p\n~p\n*****************\n", [SPAN, {{PA, ParentA}, {PB, ParentB}, Current}]),
 	IsInParallel = 
 		get(in_parallelism),
-	put(in_parallelism, [true | IsInParallel]),
+	put(in_parallelism, [true | IsInParallel]),
 	% io:format("{Current, PA}: ~w\n", [{Current, ParentA, PA}]),
 	{{NPA0, NParentA0}, CurrentA0, NNodesA0, DictA0}  = 
 		process_answer_from_track(PA, ParentA, Track, Dict, Current), 
@@ -815,7 +813,7 @@ reverse_options_list([H | T], Track, PendingSync, Acc) ->
 				SyncNodes = 
 					lists:usort([H | lists:concat(SyncNodes0)]),
 				NPendingSync0 = 
-					[H | PendingSync],
+					[H | PendingSync],
 				SetCurrentPending = 
 					sets:from_list(NPendingSync0),
 				SetSyncNodes = 
@@ -855,7 +853,7 @@ is_option(N, Track) ->
 	try 
 		{N, {Label, _}} = 
 			digraph:vertex(Track, N), 
-		NAcc = 
+		_NAcc =
 			case Label of 
 				"SKIP" ->
 					false;

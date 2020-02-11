@@ -47,7 +47,7 @@ run(File, FirstProcess) ->
 					     false -> 
 					     	register(codeserver, spawn(codeserver,loop,[Processes]))
 					end,				
-					{{{N,E,S,_},_G,Trace}, DigraphContent} = 
+					{{{_N,_E,_S,_},_G,Trace}, DigraphContent} =
 						csp_reversible_forward:start(FirstProcess),
 					{NodesDigraph, EdgesDigraph} = DigraphContent,
 					Digraph = csp_tracker:build_digraph(NodesDigraph, EdgesDigraph),
