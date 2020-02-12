@@ -14,46 +14,22 @@ Table of contents
 Installation
 ============
 
-reverCSP is built using Erlang, thus, its installation is mandatory to run the tool. You can install it using:
+GNU/Linux
+---------
 
-* Ubuntu
+reverCSP has the following dependencies: Erlang, `make` and Graphviz (optional). Without Graphviz, reverCSP will only output DOT files, instead of generating the corresponding PDFs. In Debian or Ubuntu-based distributions, the dependencies would be installed with the following command:
 
-        $ apt-get install -y build-essential erlang
-* Mac OSX (using [homebrew](https://brew.sh/index_ca))
+    # apt-get install build-essential erlang graphviz
 
-        $ brew install erlang
+To compile the program, clone this repository recursively and then run make:
 
-reverCSP optionally requires [graphviz](https://www.graphviz.org/) to produce PDF outputs of the tracks. Otherwise only DOT files will be produced. To install it simply run the following command:
+    $ git clone --recursive https://github.com/tamarit/reverCSP.git
+    $ make compile
+    
+Windows and macOS
+-----------------
 
-* Ubuntu
-        
-        $ apt-get install -y graphviz 
-
-* Mac OSX
-
-        $ brew cask install graphviz
-        
-Finally, when all previous steps are done, the following command should be run:
-
-* Ubuntu
-
-        $ cd reverCSP \
-            && make compile \
-            && cd csp_tracker \
-            && mv bin_linux/* . \
-            && make \
-            && cd .. \
-            && make compile
-
-* Mac OSX
-
-        $ cd reverCSP \
-            && make compile \
-            && cd csp_tracker \
-            && mv bin_macos/* . \
-            && make \
-            && cd .. \
-            && make compile
+reverCSP is not yet capable of running natively on this platform, but a [Docker](#docker) container is available.
 
 Docker
 ======
@@ -66,7 +42,7 @@ Once the image is created, you can run a container using the following command:
 
     $ docker run --name csp -it -v $PWD/examples:/reverCSP/examples -v $PWD/output:/reverCSP/output --rm revercsp
 
-Once inside the container the usage is as it is described in [Usage](#usage). The on-host examples folder can be used to modify or add new examples, while the on-host output folder will contain the tracks produced inside the container.
+Two folders are exposed to the docker container (see the `-v` option): `./examples`, which contains CSP specifications and `./output`, where PDFs representing the current track will be generated. When the container launches, the user is presented with a `bash` prompt, from which they can run reverCSP, as described in [Usage](#usage).
 
 Usage
 =====
@@ -74,3 +50,5 @@ Usage
 The reverCSP tool needs a CSP specification as input. We can run the tool with the chosen CSP specification (e.g. examples/ex1.csp) using the following command:
 
     $ ./reverCSP examples/ex1.csp
+
+Once launched, the user will be presented with a numbered menu, along with the current state of the CSP computation.
