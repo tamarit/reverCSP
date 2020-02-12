@@ -12,12 +12,6 @@ RUN apt-get install -y graphviz
 # RUN pwd
 RUN git clone https://github.com/tamarit/reverCSP --recursive
 
-RUN cd reverCSP \
-    && make compile \
-    && cd csp_tracker \
-    && mv bin_linux/* . \
-    && make \
-    && cd .. \
-    && make compile
+RUN make -C /reverCSP compile
 
 WORKDIR /reverCSP
