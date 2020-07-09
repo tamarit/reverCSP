@@ -270,6 +270,8 @@ csp_process_option_processing(Exp, Answer, Parent) ->
 		_ ->
 			ok
 	end,
+	% Display the trace after each execution step
+	process_answer_exe(c, fun() -> ok end, ok),
 	NExp.
 
 
