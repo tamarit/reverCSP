@@ -24,6 +24,7 @@ reverCSP has the following dependencies: Erlang, `make` and Graphviz (optional).
 To compile the program, clone this repository recursively and then run make:
 
     $ git clone --recursive https://github.com/tamarit/reverCSP.git
+    $ cd reverCSP
     $ make compile
     
 Windows and macOS
@@ -36,6 +37,8 @@ Docker
 
 We also provide a Dockerfile in case all previous steps are not available in your current environment. To build the docker image run the following command: 
 
+    $ git clone --recursive https://github.com/tamarit/reverCSP.git
+    $ cd reverCSP
     $ docker build -t revercsp .
     
 Once the image is created, you can run a container using the following command:
