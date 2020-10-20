@@ -1,23 +1,21 @@
 # reverCSP
 
-reverCSP is a tool that allows us to evaluate a CSP specification in both directions: forwards (traditional computation) and backwards (using our reversible computation framework). reverCSP uses internally [csp_tracker](https://github.com/mistupv/csp_tracker) to produce tracks of the computation so one can better follows what is being computed so far (or henceforth if going backwards). 
+reverCSP is a tool that allows us to evaluate a CSP specification in both directions: forwards (traditional computation) and backwards (using our reversible computation framework). reverCSP uses internally [csp_tracker](https://github.com/mistupv/csp_tracker) to produce tracks of the computation so one can better follows what is being computed so far (or henceforth if going backwards).
 
-Table of contents
-=================
+[Installation instructions](#installation) are provided for x86 GNU/Linux systems, and a [Dockerfile](#docker) is provided for all others. [Usage](#usage) instructions follow, and a complete [example](#example) is shown to display the capabilities of reverCSP.
 
-  * [reverCSP](#revercsp)
-  * [Table of contents](#table-of-contents)
+## Table of contents
+
   * [Installation](#installation)
   * [Docker](#docker)
   * [Usage](#usage)
+  * [Example](#example)
 
-Installation
-============
+## Installation
 
-GNU/Linux
----------
+### GNU/Linux (x86)
 
-reverCSP has the following dependencies: Erlang, `make` and Graphviz (optional). Without Graphviz, reverCSP will only output DOT files, instead of generating the corresponding PDFs. In Debian or Ubuntu-based distributions, the dependencies would be installed with the following command:
+reverCSP has the following dependencies: glibc (x86), Erlang, `make` and Graphviz (optional). Without Graphviz, reverCSP will only output DOT files, instead of generating the corresponding PDFs. In Debian or Ubuntu-based distributions, the dependencies would be installed with the following command:
 
     # apt-get install build-essential erlang graphviz
 
@@ -26,14 +24,12 @@ To compile the program, clone this repository recursively and then run make:
     $ git clone --recursive https://github.com/tamarit/reverCSP.git
     $ cd reverCSP
     $ make compile
-    
-Windows and macOS
------------------
+
+### Windows and macOS
 
 reverCSP is not yet capable of running natively on this platform, but a [Docker](#docker) container is available.
 
-Docker
-======
+## Docker
 
 We also provide a Dockerfile in case all previous steps are not available in your current environment. To build the docker image run the following command: 
 
@@ -41,19 +37,50 @@ We also provide a Dockerfile in case all previous steps are not available in you
     $ cd reverCSP
     $ docker build -t revercsp .
     
-Once the image is created, you can run a container using the following command:
+Once the image is created, you can run a container using the following command:docker pull docker.pkg.github.com/tamarit/revercsp/revercsp:latest
 
     $ docker run --name csp -it -v $PWD/examples:/reverCSP/examples -v $PWD/output:/reverCSP/output --rm revercsp
 
 Two folders are exposed to the docker container (see the `-v` option): `./examples`, which contains CSP specifications and `./output`, where PDFs representing the current track will be generated. When the container launches, the user is presented with a `bash` prompt, from which they can run reverCSP, as described in [Usage](#usage).
 
-Usage
-=====
+## Usage
 
 The reverCSP tool needs a CSP specification as input. We can run the tool with the chosen CSP specification (e.g. examples/ex1.csp) using the following command:
 
     $ ./reverCSP examples/ex1.csp
 
 Once launched, the user will be presented with a numbered menu, along with the current state of the CSP computation.
+
+## Example
+
+Consider the following CSP specification from the file `examples/rc2020.csp`:
+
+```
+channel a, b
+
+MAIN = P [|{|a|}|] Q
+P = R [|{|a|}|] (a -> ((b -> SKIP) |~| Q))
+R = a -> SKIP
+Q = a -> (b -> SKIP)
+```
+
+It describes four concurrent processes that emit events `a` and `b`. The events are organized in four processes: `MAIN`, `P`, `Q`, `R`. The operators used are the following:
+
+* *Event* (lowercase letter): the given event is emitted, creating the output of the program.
+* *Process* (uppercase letter): a procedure, which may be executed concurrently.
+* *Synchronized parallelism* (`x [|{|z|}|] y`): `x` and `y` are executed in parallel, but must execute the `z` event at the same time.
+* *Internal choice* (`x |~| y`): only `x` or `y` is executed, and the choice is performed in a non-deterministic way.
+* *Prefixing* (`x -> y`): `x` is executed, then `y` is executed. If `x` is a process call, then `y` will only be executed if it ends with `SKIP`
+* *SKIP*: ends the process normally, without an error.
+
+This specification can emit a number of outputs, such as no output, `a`, `ab` and `abb`. If we consider the last chain of events (`abb`), we can't know if the second and third event were emitted from processes `P` and `Q` or `Q` and `P`.
+
+Thus, we need to trace the execution with R-tracks, which describe each node executed with its operand (upper-right corner), the location in the code (bottom) and a timestamp (upper-left corner). Each element in the trace is connected to its arguments (operators) or to its body (process calls). The following image shows a R-track for an execution in which the internal choice in `P` executed its left-hand side (generated by an execution of `reverCSP examples/rc2020.csp`).
+
+![CSP track](https://raw.githubusercontent.com/tamarit/reverCSP/master/examples/track_RC2020.svg)
+
+This R-track has produced the output `abb`, executing a three-way synchronization for the first event (`a`, synchronized events share a timestamp and are linked with dashed red edges), then continuing on `Q` (bottom branch of the graph) for the second event (`b`) and finally performing the internal choice in the middle branch for the third event (`b`).
+
+The process to produce this R-track  can be seen in the following video:
 
 [![asciicast](https://asciinema.org/a/19TuoAdTapt2E7azcNAyzRgZg.svg)](https://asciinema.org/a/19TuoAdTapt2E7azcNAyzRgZg)
