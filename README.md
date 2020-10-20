@@ -55,3 +55,5 @@ The reverCSP tool needs a CSP specification as input. We can run the tool with t
     $ ./reverCSP examples/ex1.csp
 
 Once launched, the user will be presented with a numbered menu, along with the current state of the CSP computation.
+
+[![asciicast](https://asciinema.org/a/19TuoAdTapt2E7azcNAyzRgZg.svg)](https://asciinema.org/a/19TuoAdTapt2E7azcNAyzRgZg)
