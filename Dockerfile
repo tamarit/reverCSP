@@ -1,17 +1,15 @@
-FROM ubuntu:16.04
-
-RUN apt-get update
-
-RUN export PATH=$HOME/.local/bin:$PATH
-
-RUN apt-get install -y build-essential erlang
-RUN apt-get install -y git
-RUN apt-get install -y graphviz 
-
-# Uncomment to avoid caching repository, i.e. to force clone the newest version of the tool  
-# RUN pwd
-RUN git clone https://github.com/tamarit/reverCSP --recursive
-
+FROM ubuntu:20.04 AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    make \
+    erlang-dev \
+    && rm -rf /var/cache/apt/lists/*
+COPY . /reverCSP
 RUN make -C /reverCSP compile
 
+FROM ubuntu:20.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    erlang-base \
+    graphviz \
+    && rm -rf /var/cache/apt/lists/*
+COPY --from=builder /reverCSP /reverCSP
 WORKDIR /reverCSP
